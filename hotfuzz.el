@@ -38,8 +38,7 @@ j - the column"
          (c hotfuzz--c) (d hotfuzz--d))
     (if (> m hotfuzz-max-match-len)
         most-positive-fixnum
-      (cl-loop for j below n do
-               (aset d j (+ (aset c j (+ hotfuzz-g (* hotfuzz-h (1+ j)))) hotfuzz-g)))
+      (cl-loop for j below n do (aset d j (aset c j 10000)))
       (cl-loop for i below m do (hotfuzz--match-row haystack needle i c d c d)
                finally return (if (zerop n)
                                   (+ hotfuzz-g (* hotfuzz-h m))
@@ -67,8 +66,7 @@ j - the column"
          (c hotfuzz--c) (d hotfuzz--d))
     (if (> m hotfuzz-max-match-len)
         haystack ; Bail out if too long candidate
-      (cl-loop for j below n do
-               (aset d j (+ (aset c j (+ hotfuzz-g (* hotfuzz-h (1+ j)))) hotfuzz-g)))
+      (cl-loop for j below n do (aset d j (aset c j 10000)))
       (let ((rows (cl-loop
                    with nc = nil and nd = nil
                    for i below m and pc = c then nc and pd = d then nd with res = nil do
