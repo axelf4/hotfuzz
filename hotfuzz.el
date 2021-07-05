@@ -160,5 +160,38 @@ HAYSTACK has to be a match according to `hotfuzz-filter'."
   (add-to-list 'completion-styles-alist
                '(hotfuzz completion-flex-try-completion hotfuzz--all-completions)))
 
+;;; Selectrum integration
+
+(defun hotfuzz--highlight-all (string candidates)
+  "Highlight where STRING matches in the elements of CANDIDATES."
+  (mapcar (lambda (candidate)
+            (hotfuzz-highlight string (copy-sequence candidate)))
+          candidates))
+
+(defvar selectrum-refine-candidates-function)
+(defvar selectrum-highlight-candidates-function)
+
+;;;###autoload
+(progn
+  (defvar hotfuzz--prev-selectrum-functions nil
+    "Previous values of the Selectrum sort/filter/highlight API endpoints.")
+
+  (define-minor-mode hotfuzz-selectrum-mode
+    "Minor mode that enables hotfuzz in Selectrum menus."
+    :global t
+    (require 'selectrum)
+    (if hotfuzz-selectrum-mode
+        (setq hotfuzz--prev-selectrum-functions
+              `(,selectrum-refine-candidates-function
+                . ,selectrum-highlight-candidates-function)
+              selectrum-refine-candidates-function #'hotfuzz-filter
+              selectrum-highlight-candidates-function #'hotfuzz--highlight-all)
+      (pcase hotfuzz--prev-selectrum-functions
+        (`(,old-refine . ,old-highlight)
+         (when (eq selectrum-refine-candidates-function #'hotfuzz-filter)
+           (setq selectrum-refine-candidates-function old-refine))
+         (when (eq selectrum-highlight-candidates-function #'hotfuzz--highlight-all)
+           (setq selectrum-highlight-candidates-function old-highlight)))))))
+
 (provide 'hotfuzz)
 ;;; hotfuzz.el ends here
