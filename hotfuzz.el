@@ -69,9 +69,7 @@ j - the column"
     (fillarray d 10000)
     (hotfuzz--calc-bonus haystack)
     (cl-loop for i below m do (hotfuzz--match-row haystack needle i c d c d)
-             finally return (if (zerop n)
-                                (+ hotfuzz-g (* hotfuzz-h m))
-                              (aref c (1- n)))))) ; Final cost
+             finally return (aref c (1- n))))) ; Final cost
 
 ;;;###autoload
 (defun hotfuzz-filter (string candidates)
@@ -96,7 +94,7 @@ j - the column"
          (c hotfuzz--c) (d hotfuzz--d)
          (case-fold-search t))
     (if (> n hotfuzz--max-match-len)
-        haystack ; Bail out if too long search string
+        haystack ; Bail out if search string is too long
       (fillarray c 10000)
       (fillarray d 10000)
       (hotfuzz--calc-bonus haystack)
