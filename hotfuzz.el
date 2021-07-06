@@ -1,15 +1,31 @@
 ;;; hotfuzz.el --- Fuzzy completion style  -*- lexical-binding: t; -*-
-;;; See: Optimal alignments in linear space
+
+;; Author: Axel Forsman <axelsfor@gmail.com>
+;; Version: 0.1
+;; Package-Requires: ((emacs "27.1") cl-lib)
+;; Keywords: matching
+;; Homepage: https://github.com/axelf4/hotfuzz.el
+
+;;; Commentary:
+
+;; Approximate string matching completion style with a scoring
+;; algorithm that factors in substring matches and word/path
+;; component/camelCase boundaries.
+
+;; See: Myers, Eugene W., and Webb Miller. "Optimal alignments in
+;;      linear space." Bioinformatics 4.1 (1988): 11-17.
+
+;;; Code:
 
 (eval-when-compile (require 'cl-lib))
 
 ;; Since we pre-allocate the vectors the common optimization where
 ;; symmetricity w.r.t. to insertions/deletions means it suffices to
-;; allocate MIN(#needle, #haystack) for c/d when only calculating the
-;; score does not apply.
-(defconst hotfuzz-max-match-len 128)
-(defvar hotfuzz--c (make-vector hotfuzz-max-match-len 0))
-(defvar hotfuzz--d (make-vector hotfuzz-max-match-len 0))
+;; allocate MIN(#needle, #haystack) for C/D when only calculating the
+;; cost does not apply.
+(defconst hotfuzz--max-needle-len 128)
+(defvar hotfuzz--c (make-vector hotfuzz--max-needle-len 0))
+(defvar hotfuzz--d (make-vector hotfuzz--max-needle-len 0))
 (defvar hotfuzz--bonus (make-vector 512 0))
 
 (defconst hotfuzz--bonus-prev-luts
@@ -24,8 +40,7 @@
                do (aset bonus-state-upper ch bonus) (aset bonus-state-lower ch bonus))
       (cl-loop for ch from ?a to ?z do (aset bonus-state-upper ch word-bonus))
       (vector bonus-state-special bonus-state-upper bonus-state-lower)))
-  "LUTs of the bonus associated with the previous character, depending
-on the current character state.")
+  "LUTs of the bonus associated with the previous character.")
 (defconst hotfuzz--bonus-cur-lut
   (eval-when-compile
     (let ((bonus-cur-lut (make-char-table 'hotfuzz-bonus-lut 0)))
@@ -40,27 +55,30 @@ on the current character state.")
            (aset hotfuzz--bonus i
                  (aref (aref hotfuzz--bonus-prev-luts (aref hotfuzz--bonus-cur-lut ch)) lastch))))
 
+;; Aᵢ denotes the prefix a₀,...,aᵢ₋₁ of A
 (defun hotfuzz--match-row (a b i nc nd pc pd)
   "Calculate costs for transforming Aᵢ to Bⱼ with deletions for all j.
 
-The vectors nc/pc and nd/pd respectively may alias.
-
-needle: B
-haystack: A
-i - the row
-j - the column"
+The matrix C[i][j] represents the minimum cost of a conversion, and D,
+the minimum cost when aᵢ is deleted. The costs for row i are written
+into NC/ND, using the costs for row i-1 in PC/PD. The vectors NC/PC
+and ND/PD respectively may alias."
   (cl-loop
    with oldc
    and g = 100 and h = 5 ; Every k-symbol gap is penalized by g+hk
    ;; s threads the old value C[i-1][j-1] throughout the loop
    for j below (length b) and s = (if (zerop i) 0 (+ g (* h i))) then oldc do
    (setq oldc (aref pc j))
+   ;; Either extend optimal conversion of (i) Aᵢ₋₁ to Bⱼ₋₁, by
+   ;; matching bⱼ (C[i-1,j-1]-bonus); or (ii) Aᵢ₋₁ to Bⱼ, by deleting
+   ;; aᵢ and opening a new gap (C[i-1,j]+g+h) or enlarging the
+   ;; previous gap (D[i-1,j]+h).
    (aset nc j (min (aset nd j (+ (min (aref pd j) (+ oldc g)) h))
                    (if (char-equal (aref a i) (aref b j))
                        (- s (aref hotfuzz--bonus i))
                      most-positive-fixnum)))))
 
-(defun hotfuzz--score (needle haystack)
+(defun hotfuzz--cost (needle haystack)
   (let ((n (length needle)) (m (length haystack))
         (c hotfuzz--c) (d hotfuzz--d))
     (fillarray c 10000)
@@ -71,8 +89,8 @@ j - the column"
 
 ;;;###autoload
 (defun hotfuzz-filter (string candidates)
-  "Filter CANDIDATES that match STRING and sort by the match scores."
-  (if (or (> (length string) hotfuzz--max-match-len) (string-empty-p string))
+  "Filter CANDIDATES that match STRING and sort by the match costs."
+  (if (or (> (length string) hotfuzz--max-needle-len) (string-empty-p string))
       candidates
     (let ((re (concat "^" (mapconcat (lambda (char)
                                        (format "[^%1$s]*%1$s"
@@ -81,17 +99,19 @@ j - the column"
           (case-fold-search t))
       (sort (cl-loop for x in candidates if (string-match re x) do
                      (setq x (copy-sequence x))
-                     (put-text-property 0 1 'completion-score (hotfuzz--score string x) x)
+                     (put-text-property 0 1 'completion-cost (hotfuzz--cost string x) x)
                      and collect x)
-            (lambda (a b) (< (get-text-property 0 'completion-score a)
-                             (get-text-property 0 'completion-score b)))))))
+            (lambda (a b) (< (get-text-property 0 'completion-cost a)
+                             (get-text-property 0 'completion-cost b)))))))
 
 (defun hotfuzz-highlight (needle haystack)
-  "Highlight the characters that NEEDLE matched in HAYSTACK."
+  "Highlight the characters that NEEDLE matched in HAYSTACK.
+
+HAYSTACK has to be a match according to `hotfuzz-filter'."
   (let ((n (length needle)) (m (length haystack))
         (c hotfuzz--c) (d hotfuzz--d)
         (case-fold-search t))
-    (if (> n hotfuzz--max-match-len)
+    (if (> n hotfuzz--max-needle-len)
         haystack ; Bail out if search string is too long
       (fillarray c 10000)
       (fillarray d 10000)
@@ -104,7 +124,7 @@ j - the column"
                     (hotfuzz--match-row haystack needle i nc nd pc pd)
                     (push `(,nc . ,nd) res)
                     finally return res)
-       ;; Backtrack to find optimal matching positions
+       ;; Backtrack to find matching positions
        for j from (1- n) downto 0 with i = m do
        (while (cl-destructuring-bind (c . d) (pop rows)
                 (cl-decf i)
@@ -113,3 +133,4 @@ j - the column"
        finally return haystack))))
 
 (provide 'hotfuzz)
+;;; hotfuzz.el ends here
