@@ -65,7 +65,8 @@ j - the column"
 (defun hotfuzz--score (needle haystack)
   (let* ((n (length needle)) (m (length haystack))
          (c hotfuzz--c) (d hotfuzz--d))
-    (cl-loop for j below n do (aset d j (aset c j 10000)))
+    (fillarray c 10000)
+    (fillarray d 10000)
     (hotfuzz--calc-bonus haystack)
     (cl-loop for i below m do (hotfuzz--match-row haystack needle i c d c d)
              finally return (if (zerop n)
@@ -96,7 +97,8 @@ j - the column"
          (case-fold-search t))
     (if (> n hotfuzz--max-match-len)
         haystack ; Bail out if too long search string
-      (cl-loop for j below n do (aset d j (aset c j 10000)))
+      (fillarray c 10000)
+      (fillarray d 10000)
       (hotfuzz--calc-bonus haystack)
       (let ((rows (cl-loop
                    with nc = nil and nd = nil
