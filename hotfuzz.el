@@ -13,6 +13,35 @@
 (defconst hotfuzz-max-match-len 128)
 (defvar hotfuzz--c (make-vector hotfuzz-max-match-len 0))
 (defvar hotfuzz--d (make-vector hotfuzz-max-match-len 0))
+(defvar hotfuzz--bonus (make-vector 512 0))
+
+(defconst hotfuzz--bonus-prev-luts
+  (eval-when-compile
+    (let ((bonus-state-special (make-char-table 'hotfuzz-bonus-lut 0))
+          (bonus-state-upper (make-char-table 'hotfuzz-bonus-lut 0))
+          (bonus-state-lower (make-char-table 'hotfuzz-bonus-lut 0))
+          (word-bonus 80))
+      (cl-loop for (ch . bonus) in `((?/ . 90) (?. . 60)
+                                     (?- . ,word-bonus) (?_ . ,word-bonus)
+                                     (?\  . ,word-bonus))
+               do (aset bonus-state-upper ch bonus) (aset bonus-state-lower ch bonus))
+      (cl-loop for ch from ?a to ?z do (aset bonus-state-upper ch word-bonus))
+      (vector bonus-state-special bonus-state-upper bonus-state-lower)))
+  "LUTs of the bonus associated with the previous character, depending
+on the current character state.")
+(defconst hotfuzz--bonus-cur-lut
+  (eval-when-compile
+    (let ((bonus-cur-lut (make-char-table 'hotfuzz-bonus-lut 0)))
+      (cl-loop for ch from ?A to ?Z do (aset bonus-cur-lut ch 1))
+      (cl-loop for ch from ?a to ?z do (aset bonus-cur-lut ch 2))
+      bonus-cur-lut))
+  "LUT of the `hotfuzz--bonus-prev-luts' index based on the current character.")
+
+(defun hotfuzz--calc-bonus (haystack)
+  ""
+  (cl-loop for ch across haystack and i = 0 then (1+ i) and lastch = ?/ then ch do
+           (aset hotfuzz--bonus i
+                 (aref (aref hotfuzz--bonus-prev-luts (aref hotfuzz--bonus-cur-lut ch)) lastch))))
 
 (defun hotfuzz--match-row (a b i nc nd pc pd)
   "The inner loop.
@@ -30,17 +59,18 @@ j - the column"
    (setq oldc (aref pc j))
    (aset nc j (min (aset nd j (+ (min (aref pd j) (+ oldc hotfuzz-g)) hotfuzz-h))
                    (if (char-equal (aref a i) (aref b j))
-                       s
+                       (- s (aref hotfuzz--bonus i))
                      most-positive-fixnum)))))
 
 (defun hotfuzz--score (needle haystack)
   (let* ((n (length needle)) (m (length haystack))
          (c hotfuzz--c) (d hotfuzz--d))
-      (cl-loop for j below n do (aset d j (aset c j 10000)))
-      (cl-loop for i below m do (hotfuzz--match-row haystack needle i c d c d)
-               finally return (if (zerop n)
-                                  (+ hotfuzz-g (* hotfuzz-h m))
-                                (aref c (1- n)))))) ; Final cost
+    (cl-loop for j below n do (aset d j (aset c j 10000)))
+    (hotfuzz--calc-bonus haystack)
+    (cl-loop for i below m do (hotfuzz--match-row haystack needle i c d c d)
+             finally return (if (zerop n)
+                                (+ hotfuzz-g (* hotfuzz-h m))
+                              (aref c (1- n)))))) ; Final cost
 
 ;;;###autoload
 (defun hotfuzz-filter (string candidates)
@@ -67,6 +97,7 @@ j - the column"
     (if (> n hotfuzz--max-match-len)
         haystack ; Bail out if too long search string
       (cl-loop for j below n do (aset d j (aset c j 10000)))
+      (hotfuzz--calc-bonus haystack)
       (let ((rows (cl-loop
                    with nc = nil and nd = nil
                    for i below m and pc = c then nc and pd = d then nd with res = nil do
