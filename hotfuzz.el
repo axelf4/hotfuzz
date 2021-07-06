@@ -24,9 +24,9 @@ haystack: A
 i - the row
 j - the column"
   (cl-loop
-   with oldc = (if (zerop i) 0 (+ hotfuzz-g (* hotfuzz-h i)))
+   with oldc
    ;; s threads the old value C[i-1][j-1] throughout the loop
-   for j below (length b) and s = oldc then oldc do
+   for j below (length b) and s = (if (zerop i) 0 (+ hotfuzz-g (* hotfuzz-h i))) then oldc do
    (setq oldc (aref pc j))
    (aset nc j (min (aset nd j (+ (min (aref pd j) (+ oldc hotfuzz-g)) hotfuzz-h))
                    (if (char-equal (aref a i) (aref b j))
@@ -36,22 +36,21 @@ j - the column"
 (defun hotfuzz--score (needle haystack)
   (let* ((n (length needle)) (m (length haystack))
          (c hotfuzz--c) (d hotfuzz--d))
-    (if (> m hotfuzz-max-match-len)
-        most-positive-fixnum
       (cl-loop for j below n do (aset d j (aset c j 10000)))
       (cl-loop for i below m do (hotfuzz--match-row haystack needle i c d c d)
                finally return (if (zerop n)
                                   (+ hotfuzz-g (* hotfuzz-h m))
-                                (aref c (1- n))))))) ; Final cost
+                                (aref c (1- n)))))) ; Final cost
 
 ;;;###autoload
 (defun hotfuzz-filter (string candidates)
-  ""
-  (if (string-empty-p string)
+  "Filter CANDIDATES that match STRING and sort by the match scores."
+  (if (or (> (length string) hotfuzz--max-match-len) (string-empty-p string))
       candidates
     (let ((re (mapconcat (lambda (char) (format "[^%1$s]*%1$s"
                                                 (regexp-quote (char-to-string char))))
-                         string "")))
+                         string ""))
+          (case-fold-search t))
       (sort (cl-loop for x in candidates
                      if (string-match re x)
                      do (setq x (copy-sequence x))
@@ -63,9 +62,10 @@ j - the column"
 (defun hotfuzz-highlight (needle haystack)
   "Highlight the characters that NEEDLE matched in HAYSTACK."
   (let* ((n (length needle)) (m (length haystack))
-         (c hotfuzz--c) (d hotfuzz--d))
-    (if (> m hotfuzz-max-match-len)
-        haystack ; Bail out if too long candidate
+         (c hotfuzz--c) (d hotfuzz--d)
+         (case-fold-search t))
+    (if (> n hotfuzz--max-match-len)
+        haystack ; Bail out if too long search string
       (cl-loop for j below n do (aset d j (aset c j 10000)))
       (let ((rows (cl-loop
                    with nc = nil and nd = nil
@@ -76,10 +76,10 @@ j - the column"
                    finally return res)))
         ;; Backtrack to find optimal matching positions
         (cl-loop for j from (1- n) downto 0 with i = m do
-                 (while (cl-destructuring-bind (c . d) (progn (cl-decf i)
-                                                              (pop rows))
+                 (while (cl-destructuring-bind (c . d) (pop rows)
+                          (cl-decf i)
                           (<= (aref d j) (aref c j))))
-                     (add-face-text-property i (1+ i) 'completions-common-part nil haystack)
+                 (add-face-text-property i (1+ i) 'completions-common-part nil haystack)
                  finally return haystack)))))
 
 (provide 'hotfuzz)
