@@ -74,9 +74,10 @@ j - the column"
   "Filter CANDIDATES that match STRING and sort by the match scores."
   (if (or (> (length string) hotfuzz--max-match-len) (string-empty-p string))
       candidates
-    (let ((re (mapconcat (lambda (char) (format "[^%1$s]*%1$s"
-                                                (regexp-quote (char-to-string char))))
-                         string ""))
+    (let ((re (concat "^" (mapconcat (lambda (char)
+                                       (format "[^%1$s]*%1$s"
+                                               (regexp-quote (char-to-string char))))
+                                     string "")))
           (case-fold-search t))
       (sort (cl-loop for x in candidates if (string-match re x) do
                      (setq x (copy-sequence x))
