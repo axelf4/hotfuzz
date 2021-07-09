@@ -96,7 +96,7 @@ and ND/PD respectively may alias."
                                        (format "[^%1$s]*%1$s"
                                                (regexp-quote (char-to-string char))))
                                      string "")))
-          (case-fold-search t))
+          (case-fold-search completion-ignore-case))
       (sort (cl-loop for x in candidates if (string-match re x) do
                      (setq x (copy-sequence x))
                      (put-text-property 0 1 'completion-cost (hotfuzz--cost string x) x)
@@ -110,7 +110,7 @@ and ND/PD respectively may alias."
 HAYSTACK has to be a match according to `hotfuzz-filter'."
   (let ((n (length needle)) (m (length haystack))
         (c hotfuzz--c) (d hotfuzz--d)
-        (case-fold-search t))
+        (case-fold-search completion-ignore-case))
     (if (> n hotfuzz--max-needle-len)
         haystack ; Bail out if search string is too long
       (fillarray c 10000)
