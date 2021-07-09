@@ -132,5 +132,33 @@ HAYSTACK has to be a match according to `hotfuzz-filter'."
        (add-face-text-property i (1+ i) 'completions-common-part nil haystack)
        finally return haystack))))
 
+;;; Completion style implementation
+
+;; Without deferred highlighting (bug#47711) we do not even make an attempt
+;;;###autoload
+(defun hotfuzz--all-completions (string table pred point)
+  "Implementation of `completion-all-completions' that uses hotfuzz."
+  (pcase-let ((`(,all ,_pattern ,prefix ,_suffix ,_carbounds)
+               (completion-substring--all-completions
+                string table pred point
+                #'completion-flex--make-flex-pattern))
+              (case-fold-search completion-ignore-case))
+    (when all
+      (nconc (if (or (> (length string) hotfuzz--max-needle-len) (string-empty-p string))
+                 all
+               (mapcar (lambda (x)
+                         (setq x (copy-sequence x))
+                         (put-text-property 0 1 'completion-score (- (hotfuzz--cost string x)) x)
+                         x)
+                       all))
+             (length prefix)))))
+
+;;;###autoload
+(progn
+  ;; Why is the Emacs completions API so cursed?
+  (put 'hotfuzz 'completion--adjust-metadata #'completion--flex-adjust-metadata)
+  (add-to-list 'completion-styles-alist
+               '(hotfuzz completion-flex-try-completion hotfuzz--all-completions)))
+
 (provide 'hotfuzz)
 ;;; hotfuzz.el ends here
