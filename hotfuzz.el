@@ -126,9 +126,12 @@ HAYSTACK has to be a match according to `hotfuzz-filter'."
                     finally return res)
        ;; Backtrack to find matching positions
        for j from (1- n) downto 0 with i = m do
-       (while (cl-destructuring-bind (c . d) (pop rows)
-                (cl-decf i)
-                (<= (aref d j) (aref c j))))
+       (when (<= (aref (cdar rows) j) (aref (caar rows) j))
+         (while (cl-destructuring-bind (_c . d) (pop rows)
+                  (cl-decf i)
+                  (and (> i 0) (< (aref (cdar rows) j) (aref d j))))))
+       (pop rows)
+       (cl-decf i)
        (add-face-text-property i (1+ i) 'completions-common-part nil haystack)
        finally return haystack))))
 
