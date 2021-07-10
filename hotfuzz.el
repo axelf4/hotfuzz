@@ -90,7 +90,7 @@ and ND/PD respectively may alias."
 ;;;###autoload
 (defun hotfuzz-filter (string candidates)
   "Filter CANDIDATES that match STRING and sort by the match costs."
-  (if (or (> (length string) hotfuzz--max-needle-len) (string-empty-p string))
+  (if (or (> (length string) hotfuzz--max-needle-len) (string= string ""))
       candidates
     (let ((re (concat "^" (mapconcat (lambda (char)
                                        (format "[^%1$s]*%1$s"
@@ -144,7 +144,7 @@ HAYSTACK has to be a match according to `hotfuzz-filter'."
                 #'completion-flex--make-flex-pattern))
               (case-fold-search completion-ignore-case))
     (when all
-      (nconc (if (or (> (length string) hotfuzz--max-needle-len) (string-empty-p string))
+      (nconc (if (or (> (length string) hotfuzz--max-needle-len) (string= string ""))
                  all
                (mapcar (lambda (x)
                          (setq x (copy-sequence x))
