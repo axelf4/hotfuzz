@@ -1,10 +1,13 @@
 ;;; hotfuzz.el --- Fuzzy completion style  -*- lexical-binding: t; -*-
 
+;; Copyright 2021 Axel Forsman
+
 ;; Author: Axel Forsman <axelsfor@gmail.com>
 ;; Version: 0.1
 ;; Package-Requires: ((emacs "27.1") cl-lib)
 ;; Keywords: matching
 ;; Homepage: https://github.com/axelf4/hotfuzz.el
+;; SPDX-License-Identifier: GPL-3.0-or-later
 
 ;;; Commentary:
 
