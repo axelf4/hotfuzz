@@ -96,7 +96,8 @@ and ND/PD respectively may alias."
   (if (or (> (length string) hotfuzz--max-needle-len) (string= string ""))
       candidates
     (let ((re (concat "^" (mapconcat (lambda (char)
-                                       (format "[^%1$s]*%1$s"
+                                       (format "[^%c]*%s"
+                                               char
                                                (regexp-quote (char-to-string char))))
                                      string "")))
           (case-fold-search completion-ignore-case))
