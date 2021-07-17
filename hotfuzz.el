@@ -22,6 +22,11 @@
 
 (eval-when-compile (require 'cl-lib))
 
+(defgroup hotfuzz nil
+  "Fuzzy completion style."
+  :group 'external
+  :link '(url-link :tag "GitHub" "https://github.com/axelf4/hotfuzz"))
+
 ;; Since we pre-allocate the vectors the common optimization where
 ;; symmetricity w.r.t. to insertions/deletions means it suffices to
 ;; allocate MIN(#needle, #haystack) for C/D when only calculating the
@@ -185,6 +190,7 @@ HAYSTACK has to be a match according to `hotfuzz-filter'."
 
   (define-minor-mode hotfuzz-selectrum-mode
     "Minor mode that enables hotfuzz in Selectrum menus."
+    :group 'hotfuzz
     :global t
     (require 'selectrum)
     (if hotfuzz-selectrum-mode
