@@ -1,5 +1,8 @@
 # hotfuzz
 
+[![test](https://github.com/axelf4/hotfuzz/actions/workflows/test.yml/badge.svg)](https://github.com/axelf4/hotfuzz/actions/workflows/test.yml)
+[![codecov](https://codecov.io/gh/axelf4/hotfuzz/branch/master/graph/badge.svg?token=OV1BqTB7QL)](https://codecov.io/gh/axelf4/hotfuzz)
+
 Approximate string matching completion style with a scoring algorithm
 that factors in substring matches and word/path component/camelCase
 boundaries.
@@ -53,7 +56,7 @@ It should be said that this limitation combined with
 the bountiful caching that flx does,
 means that it can be faster at scoring long candidates than hotfuzz.
 
-## orderless
+### orderless
 
 The [orderless] completion style allows
 every component of a space-delimited (by default) pattern

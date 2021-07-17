@@ -6,7 +6,7 @@
 ;; Version: 0.1
 ;; Package-Requires: ((emacs "27.1") cl-lib)
 ;; Keywords: matching
-;; Homepage: https://github.com/axelf4/hotfuzz.el
+;; Homepage: https://github.com/axelf4/hotfuzz
 ;; SPDX-License-Identifier: GPL-3.0-or-later
 
 ;;; Commentary:
