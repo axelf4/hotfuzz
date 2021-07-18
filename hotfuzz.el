@@ -95,24 +95,6 @@ and ND/PD respectively may alias."
     (dotimes (i m) (hotfuzz--match-row haystack needle i c d c d))
     (aref c (1- n)))) ; Final cost
 
-;;;###autoload
-(defun hotfuzz-filter (string candidates)
-  "Filter CANDIDATES that match STRING and sort by the match costs."
-  (if (or (> (length string) hotfuzz--max-needle-len) (string= string ""))
-      candidates
-    (let ((re (concat "^" (mapconcat (lambda (char)
-                                       (format "[^%c]*%s"
-                                               char
-                                               (regexp-quote (char-to-string char))))
-                                     string "")))
-          (case-fold-search completion-ignore-case))
-      (sort (cl-loop for x in candidates if (string-match re x) do
-                     (setq x (copy-sequence x))
-                     (put-text-property 0 1 'completion-cost (hotfuzz--cost string x) x)
-                     and collect x)
-            (lambda (a b) (< (get-text-property 0 'completion-cost a)
-                             (get-text-property 0 'completion-cost b)))))))
-
 (defun hotfuzz-highlight (needle haystack)
   "Highlight the characters that NEEDLE matched in HAYSTACK.
 
@@ -170,9 +152,26 @@ HAYSTACK has to be a match according to `hotfuzz-filter'."
   ;; Why is the Emacs completions API so cursed?
   (put 'hotfuzz 'completion--adjust-metadata #'completion--flex-adjust-metadata)
   (add-to-list 'completion-styles-alist
-               '(hotfuzz completion-flex-try-completion hotfuzz--all-completions)))
+               '(hotfuzz completion-flex-try-completion hotfuzz--all-completions
+                         "Fuzzy completion.")))
 
 ;;; Selectrum integration
+
+;;;###autoload
+(defun hotfuzz-filter (string candidates)
+  "Filter CANDIDATES that match STRING and sort by the match costs."
+  (if (or (> (length string) hotfuzz--max-needle-len) (string= string ""))
+      candidates
+    (let ((re (concat "^" (mapconcat (lambda (char)
+                                       (format "[^%c]*%s"
+                                               char
+                                               (regexp-quote (char-to-string char))))
+                                     string "")))
+          (case-fold-search completion-ignore-case))
+      (mapcar #'car
+              (sort (cl-loop for x in candidates if (string-match re x)
+                             collect (cons x (hotfuzz--cost string x)))
+                    (lambda (a b) (< (cdr a) (cdr b))))))))
 
 (defun hotfuzz--highlight-all (string candidates)
   "Highlight where STRING matches in the elements of CANDIDATES."
