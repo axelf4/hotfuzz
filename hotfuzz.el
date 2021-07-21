@@ -4,7 +4,7 @@
 
 ;; Author: Axel Forsman <axelsfor@gmail.com>
 ;; Version: 0.1
-;; Package-Requires: ((emacs "27.1") cl-lib)
+;; Package-Requires: ((emacs "27.1"))
 ;; Keywords: matching
 ;; Homepage: https://github.com/axelf4/hotfuzz
 ;; SPDX-License-Identifier: GPL-3.0-or-later
@@ -24,12 +24,12 @@
 
 (defgroup hotfuzz nil
   "Fuzzy completion style."
-  :group 'external
+  :group 'minibuffer
   :link '(url-link :tag "GitHub" "https://github.com/axelf4/hotfuzz"))
 
 ;; Since we pre-allocate the vectors the common optimization where
 ;; symmetricity w.r.t. to insertions/deletions means it suffices to
-;; allocate MIN(#needle, #haystack) for C/D when only calculating the
+;; allocate min(#needle, #haystack) for C/D when only calculating the
 ;; cost does not apply.
 (defconst hotfuzz--max-needle-len 128)
 (defvar hotfuzz--c (make-vector hotfuzz--max-needle-len 0))
@@ -68,8 +68,8 @@
   "Calculate costs for transforming Aᵢ to Bⱼ with deletions for all j.
 
 The matrix C[i][j] represents the minimum cost of a conversion, and D,
-the minimum cost when aᵢ is deleted. The costs for row i are written
-into NC/ND, using the costs for row i-1 in PC/PD. The vectors NC/PC
+the minimum cost when aᵢ is deleted. The costs for row I are written
+into NC/ND, using the costs for row I-1 in PC/PD. The vectors NC/PC
 and ND/PD respectively may alias."
   (cl-loop
    with oldc
@@ -87,6 +87,7 @@ and ND/PD respectively may alias."
                      most-positive-fixnum)))))
 
 (defun hotfuzz--cost (needle haystack)
+  "Return the difference score of NEEDLE and the match HAYSTACK."
   (let ((n (length needle)) (m (length haystack))
         (c hotfuzz--c) (d hotfuzz--d))
     (fillarray c 10000)
@@ -98,7 +99,7 @@ and ND/PD respectively may alias."
 (defun hotfuzz-highlight (needle haystack)
   "Highlight the characters that NEEDLE matched in HAYSTACK.
 
-HAYSTACK has to be a match according to `hotfuzz-filter'."
+HAYSTACK has to be a match according to `hotfuzz-all-completions'."
   (let ((n (length needle)) (m (length haystack))
         (c hotfuzz--c) (d hotfuzz--d)
         (case-fold-search completion-ignore-case))
@@ -109,7 +110,7 @@ HAYSTACK has to be a match according to `hotfuzz-filter'."
       (hotfuzz--calc-bonus haystack)
       (cl-loop
        with rows = (cl-loop
-                    with nc = nil and nd = nil
+                    with nc and nd
                     for i below m and pc = c then nc and pd = d then nd with res = nil do
                     (setq nc (make-vector n 0) nd (make-vector n 0))
                     (hotfuzz--match-row haystack needle i nc nd pc pd)
@@ -130,7 +131,7 @@ HAYSTACK has to be a match according to `hotfuzz-filter'."
 
 ;; Without deferred highlighting (bug#47711) we do not even make an attempt
 ;;;###autoload
-(defun hotfuzz--all-completions (string table pred point)
+(defun hotfuzz-all-completions (string table pred point)
   "Implementation of `completion-all-completions' that uses hotfuzz."
   (pcase-let ((`(,all ,_pattern ,prefix ,_suffix ,_carbounds)
                (completion-substring--all-completions
@@ -152,7 +153,7 @@ HAYSTACK has to be a match according to `hotfuzz-filter'."
   ;; Why is the Emacs completions API so cursed?
   (put 'hotfuzz 'completion--adjust-metadata #'completion--flex-adjust-metadata)
   (add-to-list 'completion-styles-alist
-               '(hotfuzz completion-flex-try-completion hotfuzz--all-completions
+               '(hotfuzz completion-flex-try-completion hotfuzz-all-completions
                          "Fuzzy completion.")))
 
 ;;; Selectrum integration
@@ -182,11 +183,11 @@ HAYSTACK has to be a match according to `hotfuzz-filter'."
 (defvar selectrum-refine-candidates-function)
 (defvar selectrum-highlight-candidates-function)
 
+(defvar hotfuzz--prev-selectrum-functions nil
+  "Previous values of the Selectrum sort/filter/highlight API endpoints.")
+
 ;;;###autoload
 (progn
-  (defvar hotfuzz--prev-selectrum-functions nil
-    "Previous values of the Selectrum sort/filter/highlight API endpoints.")
-
   (define-minor-mode hotfuzz-selectrum-mode
     "Minor mode that enables hotfuzz in Selectrum menus."
     :group 'hotfuzz
