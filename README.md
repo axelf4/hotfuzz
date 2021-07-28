@@ -31,7 +31,7 @@ It does not, however, attempt to find the optimal score.
 For example, given the search string `"foo"`,
 the matched characters in a candidate could look like
 
-> xxx**f**xxx**o**xxx**o**xxxfooxxx
+> x**f**xxx**o**xxx**o**xfoox
 
 which would score low even though
 there is a contiguous match later in the string.
@@ -39,22 +39,12 @@ there is a contiguous match later in the string.
 ### flx
 
 The [flx] package - which out-of-the-box only supports [Ido] -
-is a great improvement over `flex`
-that takes into account substring matches and word boundaries.
-However, unlike hotfuzz, other than substring matches,
-it does not try to find the match with the optimal gap arrangement.
-This means that for the search string `"foo"` the candidates
-
-> xxx**f**xxx**o**xxx**o**xxxfxoxoxxxx
-
-and
-
-> xxx**f**xxx**o**xxx**o**xxxxxxxxxxxx
-
-score the same.
-It should be said that this limitation combined with
-the bountiful caching that flx does,
-means that it can be faster at scoring long candidates than hotfuzz.
+has scoring criteria similar to those used by hotfuzz,
+but works a little differently.
+Its bountiful use of caching
+means it can be faster at scoring long candidates.
+Since the ordering of completions differs between flx and hotfuzz
+you are encouraged to try both.
 
 ### orderless
 

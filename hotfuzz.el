@@ -72,38 +72,39 @@ the minimum cost when aᵢ is deleted. The costs for row I are written
 into NC/ND, using the costs for row I-1 in PC/PD. The vectors NC/PC
 and ND/PD respectively may alias."
   (cl-loop
-   with oldc
+   with m = (length b) and oldc
    and g = 100 and h = 5 ; Every k-symbol gap is penalized by g+hk
    ;; s threads the old value C[i-1][j-1] throughout the loop
-   for j below (length b) and s = (if (zerop i) 0 (+ g (* h i))) then oldc do
+   for j below m and s = (if (zerop i) 0 (+ g (* h i))) then oldc do
    (setq oldc (aref pc j))
    ;; Either extend optimal conversion of (i) Aᵢ₋₁ to Bⱼ₋₁, by
    ;; matching bⱼ (C[i-1,j-1]-bonus); or (ii) Aᵢ₋₁ to Bⱼ, by deleting
    ;; aᵢ and opening a new gap (C[i-1,j]+g+h) or enlarging the
    ;; previous gap (D[i-1,j]+h).
-   (aset nc j (min (aset nd j (+ (min (aref pd j) (+ oldc g)) h))
+   (aset nc j (min (aset nd j (+ (min (aref pd j) (+ oldc g))
+                                 (if (= j (1- m)) h (* 2 h))))
                    (if (char-equal (aref a i) (aref b j))
                        (- s (aref hotfuzz--bonus i))
                      most-positive-fixnum)))))
 
 (defun hotfuzz--cost (needle haystack)
   "Return the difference score of NEEDLE and the match HAYSTACK."
-  (let ((n (length needle)) (m (length haystack))
+  (let ((n (length haystack)) (m (length needle))
         (c hotfuzz--c) (d hotfuzz--d))
     (fillarray c 10000)
     (fillarray d 10000)
     (hotfuzz--calc-bonus haystack)
-    (dotimes (i m) (hotfuzz--match-row haystack needle i c d c d))
-    (aref c (1- n)))) ; Final cost
+    (dotimes (i n) (hotfuzz--match-row haystack needle i c d c d))
+    (aref c (1- m)))) ; Final cost
 
 (defun hotfuzz-highlight (needle haystack)
   "Highlight the characters that NEEDLE matched in HAYSTACK.
 
 HAYSTACK has to be a match according to `hotfuzz-all-completions'."
-  (let ((n (length needle)) (m (length haystack))
+  (let ((n (length haystack)) (m (length needle))
         (c hotfuzz--c) (d hotfuzz--d)
         (case-fold-search completion-ignore-case))
-    (if (> n hotfuzz--max-needle-len)
+    (if (> m hotfuzz--max-needle-len)
         haystack ; Bail out if search string is too long
       (fillarray c 10000)
       (fillarray d 10000)
@@ -111,13 +112,13 @@ HAYSTACK has to be a match according to `hotfuzz-all-completions'."
       (cl-loop
        with rows = (cl-loop
                     with nc and nd
-                    for i below m and pc = c then nc and pd = d then nd with res = nil do
-                    (setq nc (make-vector n 0) nd (make-vector n 0))
+                    for i below n and pc = c then nc and pd = d then nd with res = nil do
+                    (setq nc (make-vector m 0) nd (make-vector m 0))
                     (hotfuzz--match-row haystack needle i nc nd pc pd)
                     (push `(,nc . ,nd) res)
                     finally return res)
        ;; Backtrack to find matching positions
-       for j from (1- n) downto 0 with i = m do
+       for j from (1- m) downto 0 with i = n do
        (when (<= (aref (cdar rows) j) (aref (caar rows) j))
          (while (cl-destructuring-bind (_c . d) (pop rows)
                   (cl-decf i)
@@ -160,13 +161,17 @@ HAYSTACK has to be a match according to `hotfuzz-all-completions'."
 
 ;;;###autoload
 (defun hotfuzz-filter (string candidates)
-  "Filter CANDIDATES that match STRING and sort by the match costs."
+  "Filter CANDIDATES that match STRING and sort by the match costs.
+
+This is a performance optimization of `completion-all-completions'
+followed by `display-sort-function' for when CANDIDATES is a list of
+strings."
   (if (or (> (length string) hotfuzz--max-needle-len) (string= string ""))
       candidates
-    (let ((re (concat "^" (mapconcat (lambda (char)
+    (let ((re (concat "^" (mapconcat (lambda (ch)
                                        (format "[^%c]*%s"
-                                               char
-                                               (regexp-quote (char-to-string char))))
+                                               ch
+                                               (regexp-quote (char-to-string ch))))
                                      string "")))
           (case-fold-search completion-ignore-case))
       (mapcar #'car

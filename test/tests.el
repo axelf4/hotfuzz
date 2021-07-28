@@ -27,6 +27,11 @@
               (hotfuzz--cost "x" ".x")
               (hotfuzz--cost "x" "yx"))))
 
+(ert-deftest tighter-match-cost-test ()
+  "Test that matches spanning fewer characters are better."
+  (should (< (hotfuzz--cost "ab" "xaxbxx")
+             (hotfuzz--cost "ab" "xaxxbx"))))
+
 ;;; Highlighting tests
 
 (ert-deftest highlight-optimal-test ()
