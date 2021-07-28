@@ -27,6 +27,14 @@
               (hotfuzz--cost "x" ".x")
               (hotfuzz--cost "x" "yx"))))
 
+;;; Highlighting tests
+
+(ert-deftest highlight-optimal-test ()
+  "Test that the algorithm is non-greedy."
+  (should (ert-equal-including-properties
+           (hotfuzz-highlight "ab" "xaxbxabxaxbx")
+           #("xaxbxabxaxbx" 5 7 (face completions-common-part)))))
+
 ;;; Filtering tests
 
 (ert-deftest case-sensitivity-test ()
