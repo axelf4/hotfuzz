@@ -11,14 +11,17 @@
 
 ;;; Commentary:
 
-;; Approximate string matching completion style with a scoring
-;; algorithm that factors in substring matches and word/path
-;; component/camelCase boundaries.
+;; This is a fuzzy Emacs completion style similar to the built-in
+;; `flex' style, but with a better scoring algorithm. Specifically, it
+;; is non-greedy and ranks completions that match at word; path
+;; component; or camelCase boundaries higher.
+
+;; To use this style, prepend `hotfuzz' to `completion-styles'.
+
+;;; Code:
 
 ;; See: Myers, Eugene W., and Webb Miller. "Optimal alignments in
 ;;      linear space." Bioinformatics 4.1 (1988): 11-17.
-
-;;; Code:
 
 (eval-when-compile (require 'cl-lib))
 
@@ -26,6 +29,10 @@
   "Fuzzy completion style."
   :group 'minibuffer
   :link '(url-link :tag "GitHub" "https://github.com/axelf4/hotfuzz"))
+
+(declare-function hotfuzz--filter-c "hotfuzz-module")
+;; If the dynamic module is available: Load it
+(require 'hotfuzz-module nil t)
 
 ;; Since we pre-allocate the vectors the common optimization where
 ;; symmetricity w.r.t. to insertions/deletions means it suffices to
@@ -66,7 +73,6 @@
 ;; Aᵢ denotes the prefix a₀,...,aᵢ₋₁ of A
 (defun hotfuzz--match-row (a b i nc nd pc pd)
   "Calculate costs for transforming Aᵢ to Bⱼ with deletions for all j.
-
 The matrix C[i][j] represents the minimum cost of a conversion, and D,
 the minimum cost when aᵢ is deleted. The costs for row I are written
 into NC/ND, using the costs for row I-1 in PC/PD. The vectors NC/PC
@@ -99,7 +105,6 @@ and ND/PD respectively may alias."
 
 (defun hotfuzz-highlight (needle haystack)
   "Highlight the characters that NEEDLE matched in HAYSTACK.
-
 HAYSTACK has to be a match according to `hotfuzz-all-completions'."
   (let ((n (length haystack)) (m (length needle))
         (c hotfuzz--c) (d hotfuzz--d)
@@ -162,22 +167,23 @@ HAYSTACK has to be a match according to `hotfuzz-all-completions'."
 ;;;###autoload
 (defun hotfuzz-filter (string candidates)
   "Filter CANDIDATES that match STRING and sort by the match costs.
-
 This is a performance optimization of `completion-all-completions'
 followed by `display-sort-function' for when CANDIDATES is a list of
 strings."
-  (if (or (> (length string) hotfuzz--max-needle-len) (string= string ""))
-      candidates
-    (let ((re (concat "^" (mapconcat (lambda (ch)
-                                       (format "[^%c]*%s"
-                                               ch
-                                               (regexp-quote (char-to-string ch))))
-                                     string "")))
-          (case-fold-search completion-ignore-case))
-      (mapcar #'car
-              (sort (cl-loop for x in candidates if (string-match re x)
-                             collect (cons x (hotfuzz--cost string x)))
-                    (lambda (a b) (< (cdr a) (cdr b))))))))
+  (if (featurep 'hotfuzz-module)
+      (hotfuzz--filter-c string candidates)
+    (if (or (> (length string) hotfuzz--max-needle-len) (string= string ""))
+        candidates
+      (let ((re (concat "^" (mapconcat (lambda (ch)
+                                         (format "[^%c]*%s"
+                                                 ch
+                                                 (regexp-quote (char-to-string ch))))
+                                       string "")))
+            (case-fold-search completion-ignore-case))
+        (mapcar #'car
+                (sort (cl-loop for x in candidates if (string-match re x)
+                               collect (cons x (hotfuzz--cost string x)))
+                      (lambda (a b) (< (cdr a) (cdr b)))))))))
 
 (defun hotfuzz--highlight-all (string candidates)
   "Highlight where STRING matches in the elements of CANDIDATES."

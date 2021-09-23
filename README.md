@@ -2,16 +2,22 @@
 
 [![test](https://github.com/axelf4/hotfuzz/actions/workflows/test.yml/badge.svg)](https://github.com/axelf4/hotfuzz/actions/workflows/test.yml)
 [![codecov](https://codecov.io/gh/axelf4/hotfuzz/branch/master/graph/badge.svg?token=OV1BqTB7QL)](https://codecov.io/gh/axelf4/hotfuzz)
+[![MELPA](https://melpa.org/packages/hotfuzz-badge.svg)](https://melpa.org/#/hotfuzz)
 
-Approximate string matching completion style with a scoring algorithm
-that factors in substring matches and word/path component/camelCase
-boundaries.
+This is a fuzzy Emacs completion style similar to the built-in `flex` style,
+but with a better scoring algorithm.
+Specifically, it is non-greedy and ranks completions that match at
+word; path component; or camelCase boundaries higher.
 
 To use hotfuzz, add it to the `completion-styles` list:
 ```elisp
 (setq completion-styles '(hotfuzz))
 ```
 or, if using [Selectrum], enable `hotfuzz-selectrum-mode`.
+
+**Note:** For now highlighting is only applied with `hotfuzz-selectrum-mode`
+because doing it for the default completions API would require
+the highlighting to be computed even for completions that are not displayed.
 
 ## Customization
 
@@ -20,6 +26,34 @@ Hotfuzz adheres to a few of the default Emacs completion configuration options:
   significant when matching.
 * The face `completions-common-part` is used for highlighting the
   characters of a candidate that the search string matched.
+
+## Dynamic module
+
+Optionally, you can compile the bundled dynamic module
+to improve the performance of `hotfuzz-selectrum-mode`.
+(The completion style API is infinitely more awkward to interface with,
+mostly because matching and sorting are forced to be done separately.)
+Once the shared object is available in `load-path`
+it will automatically be picked up when hotfuzz is loaded,
+or you may evaluate `(require 'hotfuzz-module)`
+if hotfuzz has already been loaded.
+To compile, make sure GCC, CMake and GNU Make or similar are present,
+and run
+
+```sh
+mkdir build
+cd build
+cmake -G 'Unix Makefiles' \
+	-DCMAKE_C_FLAGS='-O3 -march=native' \
+	.. \
+	&& make
+```
+
+and place the resulting shared library somewhere in `load-path`.
+
+Unlike the Lisp implementation,
+the dynamic module uses an unstable sorting algorithm
+and is always case-insensitive.
 
 ## Related projects
 
