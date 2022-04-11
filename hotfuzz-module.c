@@ -5,11 +5,11 @@
  */
 #include <stdlib.h>
 #include <stdbool.h>
+#include <stdalign.h>
 #include <string.h>
 #include <ctype.h>
-#include <pthread.h>
-#include <stdio.h>
 #include <emacs-module.h>
+#include <pthread.h>
 #include <sys/sysinfo.h>
 
 #define MIN(a, b) ({ __typeof__(a) _a = (a), _b = (b); _a < _b ? _a : _b; })
@@ -17,25 +17,30 @@
 
 #define MAX_NEEDLE_LEN 128
 #define MAX_HAYSTACK_LEN 512
-#define BATCH_SIZE 1024
+#define BATCH_SIZE 2048
 
 int plugin_is_GPL_compatible;
 
-struct CharSlice { size_t len; char *buf; };
+/** An Emacs string made accessible by copying. */
+struct EmacsStr {
+	emacs_value value; ///< The original string value.
+	size_t len; ///< The length of the string minus the null byte.
+	char b[]; ///< The null-terminated copied string.
+};
 
 typedef int cost;
 
-static cost charBonus(char prev, char ch) {
-	cost wordBonus = 80;
+static cost char_bonus(char prev, char ch) {
+	cost word_bonus = 80;
 	switch (ch) {
 	case 'A' ... 'Z':
-		if ('a' <= prev && prev <= 'z') return wordBonus;
+		if ('a' <= prev && prev <= 'z') return word_bonus;
 		// Intentional fallthrough
 	case 'a' ... 'z':
 		switch (prev) {
 		case '/': return 90;
 		case '.': return 60;
-		case '-': case '_': case ' ': return wordBonus;
+		case '-': case '_': case ' ': return word_bonus;
 		}
 		// Intentional fallthrough
 	default:
@@ -43,41 +48,41 @@ static cost charBonus(char prev, char ch) {
 	}
 }
 
-static void calcBonus(struct CharSlice haystack, cost *out) {
+static void calc_bonus(struct EmacsStr *haystack, cost *out) {
 	char ch, lastch = '/';
-	for (size_t i = 0; i < haystack.len; ++i, lastch = ch)
-		out[i] = charBonus(lastch, ch = haystack.buf[i]);
+	for (size_t i = 0; i < haystack->len; ++i, lastch = ch)
+		out[i] = char_bonus(lastch, ch = haystack->b[i]);
 }
 
 /**
  * Returns equality of the two characters up to a difference of case.
  */
-static bool charEqual(char a, char b) {
+static bool char_equal(char a, char b) {
 	return tolower(a) == tolower(b);
 }
 
-static void matchRow(struct CharSlice a, struct CharSlice b, cost *bonuses, int i,
-					 cost *nc, cost *nd, cost *pc, cost *pd) {
+static void match_row(struct EmacsStr *a, struct EmacsStr *b, cost *bonuses, unsigned i,
+					  cost *nc, cost *nd, cost *pc, cost *pd) {
 	cost g = 100, h = 5;
-	size_t m = b.len;
+	size_t m = b->len;
 	cost oldc, s = i ? g + h * i : 0;
 	for (size_t j = 0; j < m; ++j, s = oldc) {
 		oldc = pc[j];
 		nc[j] = MIN(nd[j] = MIN(pd[j], oldc + g) + (j == m - 1 ? h : 2 * h),
-					charEqual(a.buf[i], b.buf[j]) ? s - bonuses[i] : 100000);
+					char_equal(a->b[i], b->b[j]) ? s - bonuses[i] : 100000);
 	}
 }
 
-static cost getCost(struct CharSlice needle, struct CharSlice haystack) {
-	int n = haystack.len, m = needle.len;
+static cost get_cost(struct EmacsStr *needle, struct EmacsStr *haystack) {
+	unsigned n = haystack->len, m = needle->len;
 	if (n > MAX_HAYSTACK_LEN || m > MAX_NEEDLE_LEN) return 10000;
 	cost c[MAX_NEEDLE_LEN], d[MAX_NEEDLE_LEN];
-	for (int i = 0; i < MAX_NEEDLE_LEN; ++i) c[i] = d[i] = 10000;
+	for (unsigned i = 0; i < MAX_NEEDLE_LEN; ++i) c[i] = d[i] = 10000;
 
 	cost bonuses[MAX_HAYSTACK_LEN];
-	calcBonus(haystack, bonuses);
+	calc_bonus(haystack, bonuses);
 
-	for (int i = 0; i < n; ++i) matchRow(haystack, needle, bonuses, i, c, d, c, d);
+	for (unsigned i = 0; i < n; ++i) match_row(haystack, needle, bonuses, i, c, d, c, d);
 
 	return c[m - 1];
 }
@@ -91,7 +96,7 @@ static cost getCost(struct CharSlice needle, struct CharSlice haystack) {
  * @param needle Null-terminated search string.
  * @param haystack Null-terminated completion candidate.
  */
-static bool isMatch(char *needle, char *haystack) {
+static bool is_match(char *needle, char *haystack) {
 	while (*needle) {
 		if ((haystack = strpbrk(haystack, (char[]) { tolower(*needle), toupper(*needle), '\0' })))
 			++needle, ++haystack; // Skip past matched character
@@ -101,261 +106,248 @@ static bool isMatch(char *needle, char *haystack) {
 	return true;
 }
 
-/// Intrusive linked list of string buffer blocks.
-struct StrBuf {
-	struct StrBuf *next;
+/** Intrusive linked list of bump allocation blocks. */
+struct Bump {
+	struct Bump *next;
 	size_t index, capacity;
-	char buf[];
+	char b[];
 };
 
 /**
- * Copies the Emacs string to make its lifetime that of the StrBuf.
+ * Allocates the specified number of bytes.
  *
- * The resulting string is null-terminated.
+ * Returns NULL on failure.
  */
-static struct CharSlice strBufAdd(emacs_env *env, struct StrBuf **head, emacs_value value) {
-	ptrdiff_t len;
-	// Determine the size of the string (including null-terminator)
-	env->copy_string_contents(env, value, NULL, &len);
-
-	if (!*head || (ptrdiff_t) ((*head)->capacity - (*head)->index) < len) {
-		size_t capacity = MAX(2048, len);
-		struct StrBuf *newHead;
-		if (!(newHead = malloc(sizeof *newHead + capacity)))
-			return (struct CharSlice) {0, NULL};
-		newHead->next = *head;
-		newHead->index = 0;
-		newHead->capacity = capacity;
-		*head = newHead;
+static void *bump_alloc(struct Bump **head, size_t len) {
+	if (!*head || (*head)->capacity - (*head)->index < len) {
+		size_t capacity = MAX(*head ? 2 * (*head)->capacity : 1024, len);
+		struct Bump *new_head;
+		if (!(new_head = malloc(sizeof *new_head + capacity)))
+			return NULL;
+		*new_head = (struct Bump) { .next = *head, .index = 0, .capacity = capacity };
+		*head = new_head;
 	}
 
-	char *s = (*head)->buf + (*head)->index;
-	env->copy_string_contents(env, value, s, &len);
+	void *p = (*head)->b + (*head)->index;
 	(*head)->index += len;
-
-	return (struct CharSlice) {len - 1, s};
+	return p;
 }
 
-static void strBufFree(struct StrBuf *head) {
+static void bump_free(struct Bump *head) {
 	while (head) {
-		struct StrBuf *next = head->next;
+		struct Bump *next = head->next;
 		free(head);
 		head = next;
 	}
 }
 
+/**
+ * Copies the Emacs string to make its lifetime that of the allocator.
+ */
+static struct EmacsStr *copy_emacs_string(emacs_env *env, struct Bump **bump, emacs_value value) {
+	ptrdiff_t len;
+	// Determine the size of the string (including null-terminator)
+	env->copy_string_contents(env, value, NULL, &len);
+
+	struct EmacsStr *result;
+	// Note: Since only EmacsStr:s are allocated with bump_alloc we
+	// may use its smaller alignment rather than the scalar maximum.
+	if (!(result = bump_alloc(bump, sizeof *result + len
+							  + alignof(struct EmacsStr) - 1 & ~(alignof(struct EmacsStr) - 1))))
+		return NULL;
+
+	result->value = value;
+	result->len = len - 1;
+	env->copy_string_contents(env, value, result->b, &len);
+	return result;
+}
+
 struct Candidate {
-	/// The original string value.
-	emacs_value value;
-	/// The copied string.
-	struct CharSlice s;
+	struct EmacsStr *s;
 	cost key;
 };
 
-static int cmpCandidate(const void *a, const void *b) {
+static int cmp_candidate(const void *a, const void *b) {
 	return ((struct Candidate *) a)->key - ((struct Candidate *) b)->key;
 }
 
-/// A batch is a collection of candidates that needs to be processed.
 struct Batch {
-	size_t count, capacity;
-	struct Candidate candidates[];
+	unsigned len;
+	struct Candidate xs[BATCH_SIZE];
 };
 
 struct Shared {
 	pthread_mutex_t mutex;
-	struct CharSlice needle;
-	size_t remaining; ///< The remaining number of batches.
-	struct Batch *batches; ///< Array of remaining batches.
-	size_t matchCount;
+	struct EmacsStr *needle;
+	struct Batch *batches, *batches_end;
 };
 
-struct Job {
+struct Worker {
 	pthread_t thread;
 	struct Shared *shared;
-	struct Batch *batch;
+	struct Batch *batch; ///< The initial batch to work on.
 };
 
 static enum JobRetVal {
 	JOB_FINISHED,
 	JOB_FAILED
-} jobFinished = JOB_FINISHED, jobFailed = JOB_FAILED;
+} job_finished = JOB_FINISHED, job_failed = JOB_FAILED;
 
-static void *filterCandidates(void *ptr) {
-	struct Job *job = ptr;
-	struct Shared *shared = job->shared;
-	struct CharSlice needle = shared->needle;
-	struct Batch *batch = job->batch;
+static void *worker_routine(void *ptr) {
+	struct Worker *worker = ptr;
+	struct Shared *shared = worker->shared;
+	struct EmacsStr *needle = shared->needle;
+	struct Batch *batch = worker->batch;
 
 	do {
-		size_t matchIdx = 0;
-		for (size_t i = 0; i < batch->count; ++i) {
-			struct Candidate *candidate = batch->candidates + i;
-			if (!isMatch(needle.buf, candidate->s.buf)) continue;
-
-			batch->candidates[matchIdx++] = (struct Candidate) {
-				.value = candidate->value,
+		unsigned num_matches = 0;
+		for (unsigned i = 0; i < batch->len; ++i) {
+			struct Candidate *candidate = batch->xs + i;
+			if (!is_match(needle->b, candidate->s->b)) continue;
+			batch->xs[num_matches++] = (struct Candidate) {
 				.s = candidate->s,
-				.key = getCost(needle, candidate->s),
+				.key = get_cost(needle, candidate->s),
 			};
 		}
-		batch->count = matchIdx; // Update number of matching completions
+		batch->len = num_matches;
 
-		// Try to get new batch
-		if (pthread_mutex_lock(&shared->mutex)) return &jobFailed;
-		shared->matchCount += matchIdx;
-		if (shared->remaining > 0) {
-			--shared->remaining;
-			batch = shared->batches;
-			shared->batches = (void *) (shared->batches + 1) + sizeof(struct Candidate) * batch->capacity;
-		} else {
-			batch = NULL;
-		}
+		// Try to fetch a new batch
+		if (pthread_mutex_lock(&shared->mutex)) return &job_failed;
+		batch = shared->batches < shared->batches_end ? shared->batches++ : NULL;
 		pthread_mutex_unlock(&shared->mutex);
 	} while (batch);
 
-	return &jobFinished;
+	return &job_finished;
 }
 
-/// Module userdata that gets allocated once at initialization.
+/** Module userdata that gets allocated once at initialization. */
 struct Data {
-	size_t maxJobs;
-	struct Job *jobs;
+	unsigned max_workers;
+	struct Worker *workers;
 };
 
-emacs_value filterEmacsList(emacs_env *env, ptrdiff_t nargs __attribute__ ((__unused__)), emacs_value args[], void *dataPtr) {
-	struct Data *data = dataPtr;
+emacs_value hotfuzz_filter(emacs_env *env, ptrdiff_t nargs __attribute__ ((__unused__)), emacs_value args[], void *data_ptr) {
+	// Short-circuit if needle is empty
+	ptrdiff_t needle_len;
+	env->copy_string_contents(env, args[0], NULL, &needle_len);
+	if (needle_len == /* solely null byte */ 1)
+		return args[1];
+
+	struct Data *data = data_ptr;
 	emacs_value fcar = env->intern(env, "car"),
 		fcdr = env->intern(env, "cdr"),
 		fcons = env->intern(env, "cons"),
 		nil = env->intern(env, "nil");
-	struct StrBuf *strBufs = NULL;
+	struct Bump *bump = NULL;
 	int success = false;
 	emacs_value result = nil;
 
 	// Collect all candidates
 	emacs_value list = args[1];
 	struct Batch *batches = NULL;
-	size_t batchIdx = 0, capacity = 0;
+	size_t batch_idx = 0, capacity = 0;
 	while (env->is_not_nil(env, list)) {
-		if (batchIdx >= capacity) {
-			capacity = MAX(2 * capacity, 1);
-			struct Batch *newBatches;
-			if (!(newBatches = realloc(batches, capacity * (sizeof *batches + sizeof(struct Candidate) * BATCH_SIZE))))
+		if ((batches && batches[batch_idx].len >= BATCH_SIZE ? ++batch_idx : batch_idx)
+			>= capacity) {
+			capacity = capacity ? 2 * capacity : 1;
+			struct Batch *new_batches;
+			if (!(new_batches = realloc(batches, capacity * sizeof *batches)))
 				goto error;
-			batches = newBatches;
-
-			// Initialize the newly allocated batches
-			for (size_t i = batchIdx; i < capacity; ++i) {
-				struct Batch *batch = (void *) batches + (sizeof *batches + sizeof(struct Candidate) * BATCH_SIZE) * i;
-				batch->count = 0;
-				batch->capacity = BATCH_SIZE;
-			}
+			batches = new_batches;
+			for (size_t i = batch_idx; i < capacity; ++i)
+				batches[i].len = 0;
 		}
 
-		struct Batch *batch = (void *) batches + (sizeof *batches + sizeof(struct Candidate) * BATCH_SIZE) * batchIdx;
 		emacs_value value = env->funcall(env, fcar, 1, (emacs_value[]) {list});
-		struct CharSlice s = strBufAdd(env, &strBufs, value);
-		if (!s.buf) goto error;
-		batch->candidates[batch->count++] = (struct Candidate) { .value = value, .s = s, };
-		if (batch->count >= BATCH_SIZE) ++batchIdx;
-
+		struct Batch *b = batches + batch_idx;
+		if (!(b->xs[b->len++].s = copy_emacs_string(env, &bump, value)))
+			goto error;
 		list = env->funcall(env, fcdr, 1, (emacs_value[]) {list});
 	}
+	if (!batches) return nil;
 
-	struct CharSlice needle = strBufAdd(env, &strBufs, args[0]);
-	if (!needle.buf) goto error;
+	struct EmacsStr *needle = copy_emacs_string(env, &bump, args[0]);
+	if (!needle) goto error;
 	struct Shared shared = {
 		.needle = needle,
-		.remaining = batchIdx + 1,
 		.batches = batches,
-		.matchCount = 0,
+		.batches_end = batches + batch_idx + 1,
 	};
 	if (pthread_mutex_init(&shared.mutex, NULL)) goto error;
 	if (pthread_mutex_lock(&shared.mutex)) goto mutex_error;
-
-	enum JobRetVal res = jobFinished;
-	size_t jobCount;
-	struct Job *jobs = data->jobs;
-	for (jobCount = 0; jobCount < data->maxJobs && shared.remaining; ++jobCount, --shared.remaining) {
-		struct Job *job = jobs + jobCount;
-		*job = (struct Job) {
+	enum JobRetVal res = job_finished;
+	unsigned worker_count;
+	struct Worker *workers = data->workers;
+	for (worker_count = 0; worker_count < data->max_workers
+			 && shared.batches < shared.batches_end; ++worker_count) {
+		struct Worker *worker = workers + worker_count;
+		*worker = (struct Worker) {
 			.shared = &shared,
-			.batch = shared.batches,
+			.batch = shared.batches++,
 		};
-		shared.batches = (void *) (shared.batches + 1) + sizeof(struct Candidate) * job->batch->capacity;
 
-		if (pthread_create(&job->thread, NULL, filterCandidates, job)) {
-			// Join all worker threads in order to at least safely destroy mutex
-			res = jobFailed;
+		if (pthread_create(&worker->thread, NULL, worker_routine, worker)) {
+			// Join all workers in order to at least safely destroy mutex
+			res = job_failed;
 			break;
 		}
 	}
 	pthread_mutex_unlock(&shared.mutex);
 
 	// Wait for all worker threads
-	for (size_t i = 0; i < jobCount; ++i) {
+	for (unsigned i = 0; i < worker_count; ++i) {
 		enum JobRetVal *retval;
-		pthread_join(jobs[i].thread, (void **) &retval);
+		pthread_join(workers[i].thread, (void **) &retval);
 		res |= *retval;
 	}
-	if (res != jobFinished) goto mutex_error;
+	if (res != job_finished) goto mutex_error;
 
-	// Compact all batches to be able to sort
-	struct Batch *batch = batches,
-		*b = (void *) (batch + 1) + sizeof(struct Candidate) * batch->capacity;
-	size_t k = batch->count;
-	for (size_t i = 1; i <= batchIdx; ++i) {
-		size_t count = b->count, capacity = b->capacity;
-		for (size_t j = 0; j < count; ++j)
-			batch->candidates[k++] = b->candidates[j];
-		batch->count += count;
-		batch->capacity += capacity;
-
-		b = (void *) (b + 1) + sizeof(struct Candidate) * capacity;
+	// Compact all batches
+	size_t len = batches[0].len;
+	struct Candidate *xs = batches[0].xs;
+	for (struct Batch *b = batches + 1; b < shared.batches_end; ++b) {
+		unsigned n = b->len;
+		memmove(xs + len, b->xs, n * sizeof *b->xs);
+		len += n;
 	}
+	qsort(xs, len, sizeof *xs, cmp_candidate); // Sort the completions
 
-	// Sort the completions
-	if (needle.len > 0)
-		qsort(batch->candidates,
-			  batch->count,
-			  sizeof *batch->candidates,
-			  cmpCandidate);
-
-	for (size_t i = batch->count; i-- > 0;)
-		result = env->funcall(env, fcons, 2,
-							  (emacs_value[]) {batch->candidates[i].value, result});
+	for (size_t i = len; i-- > 0;)
+		result = env->funcall(env, fcons, 2, (emacs_value[]) {xs[i].s->value, result});
 	success = true;
 
 mutex_error:
 	pthread_mutex_destroy(&shared.mutex);
 error:
 	free(batches);
-	strBufFree(strBufs);
+	bump_free(bump);
 
 	if (!success)
 		env->non_local_exit_signal(env, env->intern(env, "error"), nil);
 	return result;
 }
 
-int emacs_module_init(struct emacs_runtime *ert) {
-	emacs_env *env = ert->get_environment(ert);
+int emacs_module_init(struct emacs_runtime *rt) {
+	// Verify compatability with Emacs executable loading this module
+	if ((size_t) rt->size < sizeof *rt)
+		return 1;
+	emacs_env *env = rt->get_environment(rt);
+	if ((size_t) env->size < sizeof *env)
+		return 2;
 
-	long numProcs = get_nprocs();
 	static struct Data data;
-	data.maxJobs = numProcs;
-	if (!(data.jobs = malloc(data.maxJobs * sizeof *data.jobs)))
+	data.max_workers = get_nprocs();
+	if (!(data.workers = malloc(data.max_workers * sizeof *data.workers)))
 		return 1;
 
-	env->funcall(env, env->intern(env, "defalias"),
-				 2, (emacs_value[]) {
-					 env->intern(env, "hotfuzz--filter-c"),
-					 env->make_function(env, 2, 2, filterEmacsList,
-										"Filter and sort CANDIDATES that match STRING.\n"
-										"\n"
-										"\(fn STRING CANDIDATES)",
-										&data),
-				 });
+	env->funcall(env, env->intern(env, "defalias"), 2, (emacs_value[]) {
+			env->intern(env, "hotfuzz--filter-c"),
+			env->make_function(env, 2, 2, hotfuzz_filter,
+							   "Filter and sort CANDIDATES that match STRING.\n"
+							   "\n"
+							   "\(fn STRING CANDIDATES)",
+							   &data),
+		});
 
 	env->funcall(env, env->intern(env, "provide"), 1,
 				 (emacs_value[]) { env->intern(env, "hotfuzz-module") });
