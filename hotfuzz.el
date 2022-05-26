@@ -203,19 +203,23 @@ strings."
     "Minor mode that enables hotfuzz in Selectrum menus."
     :group 'hotfuzz
     :global t
-    (require 'selectrum)
     (if hotfuzz-selectrum-mode
         (setq hotfuzz--prev-selectrum-functions
-              `(,selectrum-refine-candidates-function
-                . ,selectrum-highlight-candidates-function)
+              `(,(when (boundp 'selectrum-refine-candidates-function)
+                   selectrum-refine-candidates-function)
+                . ,(when (boundp 'selectrum-highlight-candidates-function)
+                     selectrum-highlight-candidates-function))
               selectrum-refine-candidates-function #'hotfuzz-filter
               selectrum-highlight-candidates-function #'hotfuzz--highlight-all)
-      (pcase hotfuzz--prev-selectrum-functions
-        (`(,old-refine . ,old-highlight)
-         (when (eq selectrum-refine-candidates-function #'hotfuzz-filter)
-           (setq selectrum-refine-candidates-function old-refine))
-         (when (eq selectrum-highlight-candidates-function #'hotfuzz--highlight-all)
-           (setq selectrum-highlight-candidates-function old-highlight)))))))
+      (cl-flet ((restore
+                 (sym old our &aux (standard (car-safe (get sym 'standard-value))))
+                 (cond ((not (eq (symbol-value sym) our)))
+                       (old (set sym old))
+                       (standard (set sym (eval standard t)))
+                       (t (makunbound sym)))))
+        (cl-destructuring-bind (old-rcf . old-hcf) hotfuzz--prev-selectrum-functions
+          (restore 'selectrum-refine-candidates-function old-rcf #'hotfuzz-filter)
+          (restore 'selectrum-highlight-candidates-function old-hcf #'hotfuzz--highlight-all))))))
 
 (provide 'hotfuzz)
 ;;; hotfuzz.el ends here
