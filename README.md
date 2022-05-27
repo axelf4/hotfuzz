@@ -15,9 +15,20 @@ To use hotfuzz, add it to the `completion-styles` list:
 ```
 or, if using [Selectrum], enable `hotfuzz-selectrum-mode`.
 
-**Note:** For now highlighting is only applied with `hotfuzz-selectrum-mode`
-because doing it for the default completions API would require
-the highlighting to be computed even for completions that are not displayed.
+**Note:** Highlighting of the matched characters is only applied to
+the first `hotfuzz-max-highlighted-completions` completions, out of
+performance concerns. The default value is large enough so that
+generally you will need to scroll the list of completions beyond the
+second page to first see non-highlighted completions. If you are
+annoyed by this you can make it highlight all completions instead
+using
+```elisp
+(setq hotfuzz-max-highlighted-completions most-positive-fixnum)
+```
+provided you are completing small enough lists and/or do not encounter
+performance problems.
+This is a non-issue when using `hotfuzz-selectrum-mode` since
+Selectrum supports lazy highlighting.
 
 ## Customization
 
@@ -29,24 +40,20 @@ Hotfuzz adheres to a few of the default Emacs completion configuration options:
 
 ## Dynamic module
 
-Optionally, you can compile the bundled dynamic module
-to improve the performance of `hotfuzz-selectrum-mode`.
-(The completion style API is infinitely more awkward to interface with,
-mostly because matching and sorting are forced to be done separately.)
+Optionally, you may compile the bundled dynamic module
+to greatly improve the performance of filtering.
 Once the shared object is available in `load-path`
 it will automatically be picked up when hotfuzz is loaded,
 or you may evaluate `(require 'hotfuzz-module)`
-if hotfuzz has already been loaded.
+if hotfuzz already has been loaded.
 To compile, make sure GCC, CMake and GNU Make or similar are present,
 and run
 
 ```sh
 mkdir build
 cd build
-cmake -G 'Unix Makefiles' \
-	-DCMAKE_C_FLAGS='-O3 -march=native' \
-	.. \
-	&& make
+cmake -DCMAKE_C_FLAGS='-O3 -march=native' .. \
+	&& cmake --build .
 ```
 
 and place the resulting shared library somewhere in `load-path`.

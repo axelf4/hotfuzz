@@ -50,3 +50,36 @@
     (let ((completion-ignore-case t))
       (should (equal (hotfuzz-filter "a" xs) xs))
       (should (equal (hotfuzz-filter "A" xs) xs)))))
+
+(ert-deftest all-completions-test ()
+  (let* ((completion-styles '(hotfuzz))
+         (s "fb")
+         (table '("foobar" "fxxx" "foo-baz" "" "fb"))
+         (meta (completion-metadata s table nil))
+         (candidates (completion-all-completions s table nil (length s) meta))
+         (sortfun (alist-get 'display-sort-function meta))
+         (last (last candidates)))
+    (when (numberp (cdr last)) (setcdr last nil))
+    (when sortfun (setq candidates (funcall sortfun candidates)))
+    (should (equal candidates '("fb" "foo-baz" "foobar")))))
+
+;; The built-in `flex' completion style fails this test since it
+;; allows the search term "s" to match inside of the prefix "/usr/",
+;; meaning no completions get filtered.
+(ert-deftest boundaries-test ()
+  "Test completion on a single field of a filename."
+  (let ((completion-styles '(hotfuzz)))
+    (should
+     (equal
+      (completion-all-completions
+       "/usr/s/man"
+       (lambda (string _pred action)
+         (pcase action
+           ('metadata '(metadata (category . file)))
+           (`(boundaries . ,suffix)
+            `(boundaries ,(length (file-name-directory string))
+                         . ,(string-search "/" suffix)))
+           ('t (list "/usr/bin" "/usr/share" "/usr/local"))))
+       nil
+       6) ; Point as in "/usr/s|/man"
+      '("/usr/share" . 5)))))

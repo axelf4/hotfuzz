@@ -30,6 +30,13 @@
   :group 'minibuffer
   :link '(url-link :tag "GitHub" "https://github.com/axelf4/hotfuzz"))
 
+(defcustom hotfuzz-max-highlighted-completions 25
+  "The number of top-ranking completions that should be highlighted.
+Large values will decrease performance. Only applies when using the
+Emacs `completion-styles' interface."
+  :group 'hotfuzz
+  :type 'integer)
+
 (declare-function hotfuzz--filter-c "hotfuzz-module")
 ;; If the dynamic module is available: Load it
 (require 'hotfuzz-module nil t)
@@ -105,7 +112,7 @@ and ND/PD respectively may alias."
 
 (defun hotfuzz-highlight (needle haystack)
   "Highlight the characters that NEEDLE matched in HAYSTACK.
-HAYSTACK has to be a match according to `hotfuzz-all-completions'."
+HAYSTACK has to be a match according to `hotfuzz-filter'."
   (let ((n (length haystack)) (m (length needle))
         (c hotfuzz--c) (d hotfuzz--d)
         (case-fold-search completion-ignore-case))
@@ -133,57 +140,89 @@ HAYSTACK has to be a match according to `hotfuzz-all-completions'."
        (add-face-text-property i (1+ i) 'completions-common-part nil haystack)
        finally return haystack))))
 
+;;;###autoload
+(cl-defun hotfuzz-filter (string candidates &optional (start 0))
+  "Filter CANDIDATES that match STRING and sort by the match costs.
+CANDIDATES should be a list of strings. If START is non-nil, the first
+START characters of each candidate string are ignored."
+  (cond
+   ((or (string= string "") (> (length string) hotfuzz--max-needle-len))
+    candidates)
+   ((and (featurep 'hotfuzz-module) (= start 0))
+    (hotfuzz--filter-c string candidates))
+   ((let ((re (concat
+               "\\`"
+               (when (> start 0) (format ".\\{%d\\}" start))
+               (mapconcat
+                (lambda (ch) (format "[^%c]*%s" ch (regexp-quote (char-to-string ch))))
+                string "")))
+          (case-fold-search completion-ignore-case))
+      (mapcar
+       #'car
+       (cl-sort
+        (cl-loop for x in candidates if (string-match-p re x)
+                 collect (cons x (hotfuzz--cost string (if (> start 0) (substring x start) x))))
+        #'< :key #'cdr))))))
+
 ;;; Completion style implementation
 
-;; Without deferred highlighting (bug#47711) we do not even make an attempt
 ;;;###autoload
 (defun hotfuzz-all-completions (string table pred point)
-  "Implementation of `completion-all-completions' that uses hotfuzz."
-  (pcase-let ((`(,all ,_pattern ,prefix ,_suffix ,_carbounds)
-               (completion-substring--all-completions
-                string table pred point
-                #'completion-flex--make-flex-pattern))
-              (case-fold-search completion-ignore-case))
-    (when all
-      (nconc (if (or (> (length string) hotfuzz--max-needle-len) (string= string ""))
-                 all
-               (mapcar (lambda (x)
-                         (setq x (copy-sequence x))
-                         (put-text-property 0 1 'completion-score (- (hotfuzz--cost string x)) x)
-                         x)
-                       all))
-             (length prefix)))))
+  "Implementation of `completion-all-completions' that uses hotfuzz.
+This function prematurely sorts the completions; mutating the returned
+list before passing it to `display-sort-function' or
+`cycle-sort-function' will lead to inaccuracies."
+  (let* ((beforepoint (substring string 0 point))
+         (afterpoint (substring string point))
+         (bounds (completion-boundaries beforepoint table pred afterpoint))
+         (prefix (substring beforepoint 0 (car bounds)))
+         (needle (substring beforepoint (car bounds)))
+         (completion-regexp-list nil)
+         (all (hotfuzz-filter
+               needle
+               (if (and (listp table) (not (consp (car-safe table)))
+                        (not pred) (string= prefix ""))
+                   table
+                 (all-completions prefix table pred))
+               (length prefix))))
+    (when (and (not (string= needle "")) all)
+      ;; Highlighting all completions without deferred highlighting
+      ;; (bug#47711) would take too long.
+      (cl-loop
+       repeat hotfuzz-max-highlighted-completions and for x in-ref all do
+       (setf x (concat prefix
+                       (hotfuzz-highlight needle (substring x (length prefix))))))
+      (unless (> hotfuzz-max-highlighted-completions 0)
+        (setcar all (copy-sequence (car all))))
+      (put-text-property 0 1 'completion-sorted t (car all)))
+    (if (string= prefix "") all (nconc all (length prefix)))))
+
+(defun hotfuzz--adjust-metadata (metadata)
+  "Adjust completion METADATA for hotfuzz sorting."
+  (let ((existing-dsf (completion-metadata-get metadata 'display-sort-function))
+        (existing-csf (completion-metadata-get metadata 'cycle-sort-function)))
+    (cl-flet
+        ((compose-sort-fn
+          (existing-sort-fn)
+          (lambda (completions)
+            (if (or (null completions)
+                    (get-text-property 0 'completion-sorted (car completions)))
+                completions
+              (funcall existing-sort-fn completions)))))
+      `(metadata
+        (display-sort-function . ,(compose-sort-fn (or existing-dsf #'identity)))
+        (cycle-sort-function . ,(compose-sort-fn (or existing-csf #'identity)))
+        ,@(cdr metadata)))))
 
 ;;;###autoload
 (progn
   ;; Why is the Emacs completions API so cursed?
-  (put 'hotfuzz 'completion--adjust-metadata #'completion--flex-adjust-metadata)
+  (put 'hotfuzz 'completion--adjust-metadata #'hotfuzz--adjust-metadata)
   (add-to-list 'completion-styles-alist
                '(hotfuzz completion-flex-try-completion hotfuzz-all-completions
                          "Fuzzy completion.")))
 
 ;;; Selectrum integration
-
-;;;###autoload
-(defun hotfuzz-filter (string candidates)
-  "Filter CANDIDATES that match STRING and sort by the match costs.
-This is a performance optimization of `completion-all-completions'
-followed by `display-sort-function' for when CANDIDATES is a list of
-strings."
-  (if (featurep 'hotfuzz-module)
-      (hotfuzz--filter-c string candidates)
-    (if (or (> (length string) hotfuzz--max-needle-len) (string= string ""))
-        candidates
-      (let ((re (concat "^" (mapconcat (lambda (ch)
-                                         (format "[^%c]*%s"
-                                                 ch
-                                                 (regexp-quote (char-to-string ch))))
-                                       string "")))
-            (case-fold-search completion-ignore-case))
-        (mapcar #'car
-                (sort (cl-loop for x in candidates if (string-match re x)
-                               collect (cons x (hotfuzz--cost string x)))
-                      (lambda (a b) (< (cdr a) (cdr b)))))))))
 
 (defun hotfuzz--highlight-all (string candidates)
   "Highlight where STRING matches in the elements of CANDIDATES."
