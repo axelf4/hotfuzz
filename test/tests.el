@@ -89,3 +89,19 @@
        nil
        6) ; Point as in "/usr/s|/man"
       '("share/" . 5)))))
+
+;;; Vertico integration
+
+(ert-deftest vertico--all-completions-advice-test ()
+  (cl-flet ((f (apply-partially
+                #'hotfuzz--vertico--all-completions-advice
+                (lambda (&rest args) (cons (apply #'completion-all-completions args) nil)))))
+    ;; If hotfuzz was not tried or produced no matches: Do not set highlighting fn
+    (let ((completion-styles '(basic hotfuzz)))
+      (should (equal (f "x" '("x") nil 1) '(("x" . 0) . nil))))
+    (let ((completion-styles '(hotfuzz)))
+      (should (equal (f "y" '("x") nil 1) '(nil . nil)))
+      (cl-destructuring-bind (xs . hl) (f "x" '("x") nil 1)
+        ;; Highlighting should not yet have been applied
+        (should (equal-including-properties xs '(#("x" 0 1 (completion-sorted t)))))
+        (should-not (null hl))))))
