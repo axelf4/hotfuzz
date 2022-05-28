@@ -7,7 +7,7 @@ jobs:
     continue-on-error: ${{ matrix.emacs_version == 'snapshot' }}
     strategy:
       matrix:
-        emacs_version: ['27.1', 'snapshot']
+        emacs_version: ['27.1', '28.1', 'snapshot']
     steps:
     - name: Set up Emacs
       uses: purcell/setup-emacs@master
@@ -15,10 +15,10 @@ jobs:
         version: ${{ matrix.emacs_version }}
     - name: Install Eldev
       run: curl -fsSL https://raw.github.com/doublep/eldev/master/webinstall/github-eldev | sh
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v3
     - name: Run tests
       run: |
         eldev --trace --color=always compile --warnings-as-errors
-        eldev --loading=built-source --trace --color=always test --undercover codecov
+        eldev --loading=built-source --trace --color=always test --undercover codecov,dontsend
     - name: Upload coverage
-      uses: codecov/codecov-action@v1
+      uses: codecov/codecov-action@v2
