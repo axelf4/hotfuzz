@@ -260,5 +260,43 @@ list before passing it to `display-sort-function' or
           (restore 'selectrum-refine-candidates-function old-rcf #'hotfuzz-filter)
           (restore 'selectrum-highlight-candidates-function old-hcf #'hotfuzz--highlight-all))))))
 
+;;; Vertico integration
+
+(declare-function vertico--all-completions "ext:vertico")
+
+(defun hotfuzz--vertico--all-completions-advice (fun &rest args)
+  "Advice for FUN `vertico--all-completions' to defer hotfuzz highlighting."
+  (cl-letf* ((prefix (cl-destructuring-bind (string table pred point . rest) args
+                       (substring
+                        string 0
+                        (car (completion-boundaries (substring string 0 point)
+                                                    table pred
+                                                    (substring string point))))))
+             (hl nil)
+             ((symbol-function #'hotfuzz-highlight)
+              (lambda (pattern cand)
+                (setq hl (apply-partially
+                          #'mapcar
+                          (lambda (x)
+                            (concat prefix (hotfuzz-highlight
+                                            pattern (substring x (length prefix)))))))
+                cand))
+             (hotfuzz-max-highlighted-completions 1)
+             (result (apply fun args)))
+    (when hl (setcdr result hl))
+    result))
+
+;;;###autoload
+(define-minor-mode hotfuzz-vertico-mode
+  "Toggle Hotfuzz compatibility code for the Vertico completion system.
+Contrary to what the name might suggest, this mode does not
+automatically enable Hotfuzz. You still have to choose when it is used
+by customizing e.g. `completion-styles'."
+  :global t
+  :group 'hotfuzz
+  (if hotfuzz-vertico-mode
+      (advice-add #'vertico--all-completions :around #'hotfuzz--vertico--all-completions-advice)
+    (advice-remove #'vertico--all-completions #'hotfuzz--vertico--all-completions-advice)))
+
 (provide 'hotfuzz)
 ;;; hotfuzz.el ends here
