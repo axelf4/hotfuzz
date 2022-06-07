@@ -46,9 +46,10 @@ Emacs `completion-styles' interface."
 ;; allocate min(#needle, #haystack) for C/D when only calculating the
 ;; cost does not apply.
 (defconst hotfuzz--max-needle-len 128)
+(defconst hotfuzz--max-haystack-len 512)
 (defvar hotfuzz--c (make-vector hotfuzz--max-needle-len 0))
 (defvar hotfuzz--d (make-vector hotfuzz--max-needle-len 0))
-(defvar hotfuzz--bonus (make-vector 512 0))
+(defvar hotfuzz--bonus (make-vector hotfuzz--max-haystack-len 0))
 
 (defconst hotfuzz--bonus-prev-luts
   (eval-when-compile
@@ -104,11 +105,13 @@ and ND/PD respectively may alias."
   "Return the difference score of NEEDLE and the match HAYSTACK."
   (let ((n (length haystack)) (m (length needle))
         (c hotfuzz--c) (d hotfuzz--d))
-    (fillarray c 10000)
-    (fillarray d 10000)
-    (hotfuzz--calc-bonus haystack)
-    (dotimes (i n) (hotfuzz--match-row haystack needle i c d c d))
-    (aref c (1- m)))) ; Final cost
+    (if (> n hotfuzz--max-haystack-len)
+        10000
+      (fillarray c 10000)
+      (fillarray d 10000)
+      (hotfuzz--calc-bonus haystack)
+      (dotimes (i n) (hotfuzz--match-row haystack needle i c d c d))
+      (aref c (1- m))))) ; Final cost
 
 (defun hotfuzz-highlight (needle haystack)
   "Highlight the characters that NEEDLE matched in HAYSTACK.
@@ -116,8 +119,8 @@ HAYSTACK has to be a match according to `hotfuzz-filter'."
   (let ((n (length haystack)) (m (length needle))
         (c hotfuzz--c) (d hotfuzz--d)
         (case-fold-search completion-ignore-case))
-    (if (> m hotfuzz--max-needle-len)
-        haystack ; Bail out if search string is too long
+    (if (or (> n hotfuzz--max-haystack-len) (> m hotfuzz--max-needle-len))
+        haystack ; Bail out if is too long
       (fillarray c 10000)
       (fillarray d 10000)
       (hotfuzz--calc-bonus haystack)

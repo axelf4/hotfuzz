@@ -51,6 +51,14 @@
       (should (equal (hotfuzz-filter "a" xs) xs))
       (should (equal (hotfuzz-filter "A" xs) xs)))))
 
+(ert-deftest long-candidates-test ()
+  (let ((a (make-string 4096 ?x))
+        (b (concat (make-string 2047 ?y) "x" (make-string 2048 ?y))))
+    ;; Too long candidates should still be filtered with matches
+    ;; lumped together at the end in their original order.
+    (should (equal (hotfuzz-filter "x" (list (make-string 4096 ?y) b a "x"))
+                   (list "x" b a)))))
+
 (ert-deftest all-completions-test ()
   (let* ((completion-styles '(hotfuzz))
          (s "fb")
