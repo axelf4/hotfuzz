@@ -78,7 +78,7 @@
            ('metadata '(metadata (category . file)))
            (`(boundaries . ,suffix)
             `(boundaries ,(length (file-name-directory string))
-                         . ,(string-search "/" suffix)))
+                         . ,(string-match-p "/" suffix)))
            ('t (list "/usr/bin" "/usr/share" "/usr/local"))))
        nil
        6) ; Point as in "/usr/s|/man"
