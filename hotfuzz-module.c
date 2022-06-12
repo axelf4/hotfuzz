@@ -54,13 +54,6 @@ static void calc_bonus(struct EmacsStr *haystack, cost *out) {
 		out[i] = char_bonus(lastch, ch = haystack->b[i]);
 }
 
-/**
- * Returns equality of the two characters up to a difference of case.
- */
-static bool char_equal(char a, char b) {
-	return tolower(a) == tolower(b);
-}
-
 static void match_row(struct EmacsStr *a, struct EmacsStr *b, cost *bonuses, unsigned i,
 					  cost *nc, cost *nd, cost *pc, cost *pd) {
 	cost g = 100, h = 5;
@@ -69,7 +62,7 @@ static void match_row(struct EmacsStr *a, struct EmacsStr *b, cost *bonuses, uns
 	for (size_t j = 0; j < m; ++j, s = oldc) {
 		oldc = pc[j];
 		nc[j] = MIN(nd[j] = MIN(pd[j], oldc + g) + (j == m - 1 ? h : 2 * h),
-					char_equal(a->b[i], b->b[j]) ? s - bonuses[i] : 100000);
+					a->b[i] == b->b[j] ? s - bonuses[i] : 100000);
 	}
 }
 
@@ -77,12 +70,15 @@ static cost get_cost(struct EmacsStr *needle, struct EmacsStr *haystack) {
 	unsigned n = haystack->len, m = needle->len;
 	if (n > MAX_HAYSTACK_LEN || m > MAX_NEEDLE_LEN) return 10000;
 	cost c[MAX_NEEDLE_LEN], d[MAX_NEEDLE_LEN];
-	for (unsigned i = 0; i < MAX_NEEDLE_LEN; ++i) c[i] = d[i] = 10000;
+	for (unsigned j = 0; j < m; ++j) c[j] = d[j] = 10000;
 
 	cost bonuses[MAX_HAYSTACK_LEN];
 	calc_bonus(haystack, bonuses);
 
-	for (unsigned i = 0; i < n; ++i) match_row(haystack, needle, bonuses, i, c, d, c, d);
+	for (unsigned i = 0; i < n; ++i) {
+		haystack->b[i] = tolower(haystack->b[i]);
+		match_row(haystack, needle, bonuses, i, c, d, c, d);
+	}
 
 	return c[m - 1];
 }
@@ -98,7 +94,7 @@ static cost get_cost(struct EmacsStr *needle, struct EmacsStr *haystack) {
  */
 static bool is_match(char *needle, char *haystack) {
 	while (*needle) {
-		if ((haystack = strpbrk(haystack, (char[]) { tolower(*needle), toupper(*needle), '\0' })))
+		if ((haystack = strpbrk(haystack, (char[]) { *needle, toupper(*needle), '\0' })))
 			++needle, ++haystack; // Skip past matched character
 		else
 			return false;
@@ -268,6 +264,8 @@ emacs_value hotfuzz_filter(emacs_env *env, ptrdiff_t nargs __attribute__ ((__unu
 
 	struct EmacsStr *needle = copy_emacs_string(env, &bump, args[0]);
 	if (!needle) goto error;
+	for (unsigned i = 0; i < needle->len; ++i)
+		needle->b[i] = tolower(needle->b[i]);
 	struct Shared shared = {
 		.needle = needle,
 		.batches = batches,
