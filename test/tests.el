@@ -71,9 +71,6 @@
     (when sortfun (setq candidates (funcall sortfun candidates)))
     (should (equal candidates '("fb" "foo-baz" "foobar")))))
 
-;; The built-in `flex' completion style fails this test since it
-;; allows the search term "s" to match inside of the prefix "/usr/",
-;; meaning no completions get filtered.
 (ert-deftest boundaries-test ()
   "Test completion on a single field of a filename."
   (let ((completion-styles '(hotfuzz)))
@@ -82,12 +79,13 @@
       (completion-all-completions
        "/usr/s/man"
        (lambda (string _pred action)
-         (pcase action
-           ('metadata '(metadata (category . file)))
-           (`(boundaries . ,suffix)
-            `(boundaries ,(length (file-name-directory string))
-                         . ,(string-match-p "/" suffix)))
-           ('t (list "/usr/bin" "/usr/share" "/usr/local"))))
+         (let ((prefix-len (length (file-name-directory string))))
+           (pcase action
+             ('metadata '(metadata (category . file)))
+             (`(boundaries . ,suffix)
+              `(boundaries ,prefix-len . ,(string-match-p "/" suffix)))
+             ('t (mapcar (lambda (x) (substring x prefix-len))
+                         (list "/usr/bin/" "/usr/share/" "/usr/local/"))))))
        nil
        6) ; Point as in "/usr/s|/man"
-      '("/usr/share" . 5)))))
+      '("share/" . 5)))))

@@ -144,28 +144,23 @@ HAYSTACK has to be a match according to `hotfuzz-filter'."
        finally return haystack))))
 
 ;;;###autoload
-(cl-defun hotfuzz-filter (string candidates &optional (start 0))
+(cl-defun hotfuzz-filter (string candidates)
   "Filter CANDIDATES that match STRING and sort by the match costs.
-CANDIDATES should be a list of strings. If START is non-nil, the first
-START characters of each candidate string are ignored."
+CANDIDATES should be a list of strings."
   (cond
-   ((or (string= string "") (> (length string) hotfuzz--max-needle-len))
-    candidates)
-   ((and (featurep 'hotfuzz-module) (= start 0))
-    (hotfuzz--filter-c string candidates))
+   ((not (<= 1 (length string) hotfuzz--max-needle-len)) candidates)
+   ((featurep 'hotfuzz-module) (hotfuzz--filter-c string candidates))
    ((let ((re (concat
                "\\`"
-               (when (> start 0) (format ".\\{%d\\}" start))
                (mapconcat
                 (lambda (ch) (format "[^%c]*%s" ch (regexp-quote (char-to-string ch))))
                 string "")))
           (case-fold-search completion-ignore-case))
       (mapcar
        #'car
-       (cl-sort
-        (cl-loop for x in candidates if (string-match-p re x)
-                 collect (cons x (hotfuzz--cost string (if (> start 0) (substring x start) x))))
-        #'< :key #'cdr))))))
+       (cl-sort (cl-loop for x in candidates if (string-match-p re x)
+                         collect (cons x (hotfuzz--cost string x)))
+                #'< :key #'cdr))))))
 
 ;;; Completion style implementation
 
@@ -184,22 +179,22 @@ list before passing it to `display-sort-function' or
          (all (hotfuzz-filter
                needle
                (if (and (listp table) (not (consp (car-safe table)))
-                        (not pred) (string= prefix ""))
+                        (not (functionp table)) (not pred))
                    table
-                 (all-completions prefix table pred))
-               (length prefix))))
-    (when (and (not (string= needle "")) all)
-      ;; Highlighting all completions without deferred highlighting
-      ;; (bug#47711) would take too long.
-      (cl-loop
-       repeat hotfuzz-max-highlighted-completions and for x in-ref all do
-       (setf x (concat prefix
-                       (hotfuzz-highlight needle (substring x (length prefix))))))
-      (unless (> hotfuzz-max-highlighted-completions 0)
-        (setcar all (copy-sequence (car all))))
-      (put-text-property 0 1 'completion-sorted t (car all)))
-    (if (string= prefix "") all (nconc all (length prefix)))))
+                 (all-completions prefix table pred)))))
+    (when all
+      (unless (string= needle "")
+        ;; Highlighting all completions without deferred highlighting
+        ;; (bug#47711) would take too long.
+        (cl-loop
+         repeat hotfuzz-max-highlighted-completions and for x in-ref all do
+         (setf x (hotfuzz-highlight needle (copy-sequence x))))
+        (unless (> hotfuzz-max-highlighted-completions 0)
+          (setcar all (copy-sequence (car all))))
+        (put-text-property 0 1 'completion-sorted t (car all)))
+      (if (string= prefix "") all (nconc all (length prefix))))))
 
+;; ;;;###autoload
 (defun hotfuzz--adjust-metadata (metadata)
   "Adjust completion METADATA for hotfuzz sorting."
   (let ((existing-dsf (completion-metadata-get metadata 'display-sort-function))
