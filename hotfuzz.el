@@ -149,7 +149,8 @@ HAYSTACK has to be a match according to `hotfuzz-filter'."
 CANDIDATES should be a list of strings."
   (cond
    ((not (<= 1 (length string) hotfuzz--max-needle-len)) candidates)
-   ((featurep 'hotfuzz-module) (hotfuzz--filter-c string candidates))
+   ((featurep 'hotfuzz-module)
+    (hotfuzz--filter-c string candidates completion-ignore-case))
    ((let ((re (concat
                "\\`"
                (mapconcat

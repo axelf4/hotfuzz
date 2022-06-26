@@ -43,10 +43,10 @@
 ;;; Filtering tests
 
 (ert-deftest case-sensitivity-test ()
-  (let ((xs '("aa" "aA" "Aa" "AA")))
+  (let ((xs '("aa" "aA " "Aa  " "AA   ")))
     (let ((completion-ignore-case nil))
-      (should (equal (hotfuzz-filter "a" xs) '("aa" "aA" "Aa")))
-      (should (equal (hotfuzz-filter "A" xs) '("Aa" "AA" "aA"))))
+      (should (equal (hotfuzz-filter "a" xs) '("aa" "aA " "Aa  ")))
+      (should (equal (hotfuzz-filter "A" xs) '("Aa  " "AA   " "aA "))))
     (let ((completion-ignore-case t))
       (should (equal (hotfuzz-filter "a" xs) xs))
       (should (equal (hotfuzz-filter "A" xs) xs)))))

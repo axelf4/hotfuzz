@@ -66,7 +66,7 @@ static void match_row(struct EmacsStr *a, struct EmacsStr *b, cost *bonuses, uns
 	}
 }
 
-static cost get_cost(struct EmacsStr *needle, struct EmacsStr *haystack) {
+static cost get_cost(struct EmacsStr *needle, struct EmacsStr *haystack, bool ignore_case) {
 	unsigned n = haystack->len, m = needle->len;
 	if (n > MAX_HAYSTACK_LEN || m > MAX_NEEDLE_LEN) return 10000;
 	cost c[MAX_NEEDLE_LEN], d[MAX_NEEDLE_LEN];
@@ -76,7 +76,8 @@ static cost get_cost(struct EmacsStr *needle, struct EmacsStr *haystack) {
 	calc_bonus(haystack, bonuses);
 
 	for (unsigned i = 0; i < n; ++i) {
-		haystack->b[i] = tolower(haystack->b[i]);
+		if (ignore_case)
+			haystack->b[i] = tolower(haystack->b[i]);
 		match_row(haystack, needle, bonuses, i, c, d, c, d);
 	}
 
@@ -84,17 +85,17 @@ static cost get_cost(struct EmacsStr *needle, struct EmacsStr *haystack) {
 }
 
 /**
- * Returns whether haystack case-insensitively matches needle.
- *
- * This function does not take the value of completion-ignore-case
- * into account.
+ * Returns whether @p haystack matches @p needle.
  *
  * @param needle Null-terminated search string.
  * @param haystack Null-terminated completion candidate.
+ * @param ignore_case Whether to match case-insensitively.
  */
-static bool is_match(char *needle, char *haystack) {
+static bool is_match(char *needle, char *haystack, bool ignore_case) {
 	while (*needle) {
-		if ((haystack = strpbrk(haystack, (char[]) { *needle, toupper(*needle), '\0' })))
+		if (ignore_case
+			? (haystack = strpbrk(haystack, (char[]) { *needle, toupper(*needle), '\0' }))
+			: (haystack = strchr(haystack, *needle)))
 			++needle, ++haystack; // Skip past matched character
 		else
 			return false;
@@ -174,6 +175,7 @@ struct Batch {
 
 struct Shared {
 	pthread_mutex_t mutex;
+	bool ignore_case;
 	struct EmacsStr *needle;
 	struct Batch *batches, *batches_end;
 };
@@ -199,10 +201,10 @@ static void *worker_routine(void *ptr) {
 		unsigned num_matches = 0;
 		for (unsigned i = 0; i < batch->len; ++i) {
 			struct Candidate *candidate = batch->xs + i;
-			if (!is_match(needle->b, candidate->s->b)) continue;
+			if (!is_match(needle->b, candidate->s->b, shared->ignore_case)) continue;
 			batch->xs[num_matches++] = (struct Candidate) {
 				.s = candidate->s,
-				.key = get_cost(needle, candidate->s),
+				.key = get_cost(needle, candidate->s, shared->ignore_case),
 			};
 		}
 		batch->len = num_matches;
@@ -222,13 +224,7 @@ struct Data {
 	struct Worker *workers;
 };
 
-emacs_value hotfuzz_filter(emacs_env *env, ptrdiff_t nargs __attribute__ ((__unused__)), emacs_value args[], void *data_ptr) {
-	// Short-circuit if needle is empty
-	ptrdiff_t needle_len;
-	env->copy_string_contents(env, args[0], NULL, &needle_len);
-	if (needle_len == /* solely null byte */ 1)
-		return args[1];
-
+emacs_value hotfuzz_filter(emacs_env *env, ptrdiff_t nargs, emacs_value args[], void *data_ptr) {
 	struct Data *data = data_ptr;
 	emacs_value fcar = env->intern(env, "car"),
 		fcdr = env->intern(env, "cdr"),
@@ -262,11 +258,14 @@ emacs_value hotfuzz_filter(emacs_env *env, ptrdiff_t nargs __attribute__ ((__unu
 	}
 	if (!batches) return nil;
 
+	bool ignore_case = nargs >= 3 && env->is_not_nil(env, args[2]);
 	struct EmacsStr *needle = copy_emacs_string(env, &bump, args[0]);
 	if (!needle) goto error;
-	for (unsigned i = 0; i < needle->len; ++i)
-		needle->b[i] = tolower(needle->b[i]);
+	if (ignore_case)
+		for (size_t i = 0; i < needle->len; ++i)
+			needle->b[i] = tolower(needle->b[i]);
 	struct Shared shared = {
+		.ignore_case = ignore_case,
 		.needle = needle,
 		.batches = batches,
 		.batches_end = batches + batch_idx + 1,
@@ -340,10 +339,10 @@ int emacs_module_init(struct emacs_runtime *rt) {
 
 	env->funcall(env, env->intern(env, "defalias"), 2, (emacs_value[]) {
 			env->intern(env, "hotfuzz--filter-c"),
-			env->make_function(env, 2, 2, hotfuzz_filter,
+			env->make_function(env, 2, 3, hotfuzz_filter,
 							   "Filter and sort CANDIDATES that match STRING.\n"
 							   "\n"
-							   "\(fn STRING CANDIDATES)",
+							   "\(fn STRING CANDIDATES &optional IGNORE-CASE)",
 							   &data),
 		});
 

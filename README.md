@@ -59,8 +59,7 @@ cmake -DCMAKE_C_FLAGS='-O3 -march=native' .. \
 and place the resulting shared library somewhere in `load-path`.
 
 Unlike the Lisp implementation,
-the dynamic module uses an unstable sorting algorithm
-and is always case-insensitive.
+the dynamic module uses an unstable sorting algorithm.
 
 ## Related projects
 
