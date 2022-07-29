@@ -13,6 +13,15 @@ To use hotfuzz, add it to the `completion-styles` list:
 ```elisp
 (setq completion-styles '(hotfuzz))
 ```
+
+Or, if using
+[Fido](https://www.gnu.org/software/emacs/manual/html_node/emacs/Icomplete.html),
+add hotfuzz to the `completion-styles` list this way:
+
+```elisp
+(add-hook 'icomplete-minibuffer-setup-hook
+          (lambda () (setq-local completion-styles '(hotfuzz))))
+```
 or, if using [Selectrum], enable `hotfuzz-selectrum-mode`.
 
 **Note:** Highlighting of the matched characters is only applied to
