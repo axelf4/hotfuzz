@@ -5,9 +5,9 @@
  */
 #include <stdlib.h>
 #include <stdbool.h>
+#include <stdint.h>
 #include <stdalign.h>
 #include <string.h>
-#include <ctype.h>
 #include <emacs-module.h>
 #include <pthread.h>
 #include <sys/sysinfo.h>
@@ -27,6 +27,42 @@ struct EmacsStr {
 	size_t len; ///< The length of the string minus the null byte.
 	char b[]; ///< The null-terminated copied string.
 };
+
+static char tolower_utf8(char c) {
+	return *u8"A" <= c && c <= *u8"Z" ? c + (*u8"a" - *u8"A") : c;
+}
+
+static char toupper_utf8(char c) {
+	return *u8"a" <= c && c <= *u8"z" ? c - (*u8"a" - *u8"A") : c;
+}
+
+static uint64_t tolower8(uint64_t x) {
+	uint64_t ones = 0x0101010101010101,
+		is_gt_Z = (0x7f * ones & x) + (0x7f - *u8"Z") * ones,
+		is_ge_A = (0x7f * ones & x) + (0x80 - *u8"A") * ones,
+		is_upper = 0x80 * ones & ~x & (is_ge_A ^ is_gt_Z);
+	return x | is_upper >> 2;
+}
+
+
+static void strtolower(struct EmacsStr *s) {
+	// Complicated in order to optimize out the calls to tolower_utf8
+	// on AMD64 System V with GCC 11.3.0.
+
+	size_t i = 0;
+	if ((alignof(struct EmacsStr) + offsetof(struct EmacsStr, b)) % alignof(uint64_t))
+		for (; ((uintptr_t) s->b + i) % alignof(uint64_t) && i < s->len; ++i)
+			s->b[i] = tolower_utf8(s->b[i]);
+
+	size_t pad = alignof(struct EmacsStr)
+		- offsetof(struct EmacsStr, b) % alignof(struct EmacsStr);
+	for (; i + 8 < s->len + MIN(pad, 8); i += 8) {
+		uint64_t *x = (uint64_t *) (s->b + i);
+		*x = tolower8(*x);
+	}
+
+	if (pad < 8 - 1) for (; i < s->len; ++i) s->b[i] = tolower_utf8(s->b[i]);
+}
 
 typedef int cost;
 
@@ -55,14 +91,14 @@ static void calc_bonus(struct EmacsStr *haystack, cost *out) {
 }
 
 static void match_row(struct EmacsStr *a, struct EmacsStr *b, cost *bonuses, unsigned i,
-					  cost *nc, cost *nd, cost *pc, cost *pd) {
+	cost *nc, cost *nd, cost *pc, cost *pd) {
 	cost g = 100, h = 5;
 	size_t m = b->len;
 	cost oldc, s = i ? g + h * i : 0;
 	for (size_t j = 0; j < m; ++j, s = oldc) {
 		oldc = pc[j];
 		nc[j] = MIN(nd[j] = MIN(pd[j], oldc + g) + (j == m - 1 ? h : 2 * h),
-					a->b[i] == b->b[j] ? s - bonuses[i] : 100000);
+			a->b[i] == b->b[j] ? s - bonuses[i] : 100000);
 	}
 }
 
@@ -75,11 +111,9 @@ static cost get_cost(struct EmacsStr *needle, struct EmacsStr *haystack, bool ig
 	cost bonuses[MAX_HAYSTACK_LEN];
 	calc_bonus(haystack, bonuses);
 
-	for (unsigned i = 0; i < n; ++i) {
-		if (ignore_case)
-			haystack->b[i] = tolower(haystack->b[i]);
+	if (ignore_case) strtolower(haystack);
+	for (unsigned i = 0; i < n; ++i)
 		match_row(haystack, needle, bonuses, i, c, d, c, d);
-	}
 
 	return c[m - 1];
 }
@@ -94,7 +128,7 @@ static cost get_cost(struct EmacsStr *needle, struct EmacsStr *haystack, bool ig
 static bool is_match(char *needle, char *haystack, bool ignore_case) {
 	while (*needle) {
 		if (ignore_case
-			? (haystack = strpbrk(haystack, (char[]) { *needle, toupper(*needle), '\0' }))
+			? (haystack = strpbrk(haystack, (char[]) { *needle, toupper_utf8(*needle), '\0' }))
 			: (haystack = strchr(haystack, *needle)))
 			++needle, ++haystack; // Skip past matched character
 		else
@@ -150,7 +184,7 @@ static struct EmacsStr *copy_emacs_string(emacs_env *env, struct Bump **bump, em
 	// Note: Since only EmacsStr:s are allocated with bump_alloc we
 	// may use its smaller alignment rather than the scalar maximum.
 	if (!(result = bump_alloc(bump, sizeof *result + len
-							  + alignof(struct EmacsStr) - 1 & ~(alignof(struct EmacsStr) - 1))))
+				+ alignof(struct EmacsStr) - 1 & ~(alignof(struct EmacsStr) - 1))))
 		return NULL;
 
 	result->value = value;
@@ -263,7 +297,7 @@ emacs_value hotfuzz_filter(emacs_env *env, ptrdiff_t nargs, emacs_value args[], 
 	if (!needle) goto error;
 	if (ignore_case)
 		for (size_t i = 0; i < needle->len; ++i)
-			needle->b[i] = tolower(needle->b[i]);
+			needle->b[i] = tolower_utf8(needle->b[i]);
 	struct Shared shared = {
 		.ignore_case = ignore_case,
 		.needle = needle,
@@ -274,9 +308,10 @@ emacs_value hotfuzz_filter(emacs_env *env, ptrdiff_t nargs, emacs_value args[], 
 	if (pthread_mutex_lock(&shared.mutex)) goto mutex_error;
 	enum JobRetVal res = job_finished;
 	unsigned worker_count;
+
 	struct Worker *workers = data->workers;
 	for (worker_count = 0; worker_count < data->max_workers
-			 && shared.batches < shared.batches_end; ++worker_count) {
+				&& shared.batches < shared.batches_end; ++worker_count) {
 		struct Worker *worker = workers + worker_count;
 		*worker = (struct Worker) {
 			.shared = &shared,
@@ -299,6 +334,9 @@ emacs_value hotfuzz_filter(emacs_env *env, ptrdiff_t nargs, emacs_value args[], 
 	}
 	if (res != job_finished) goto mutex_error;
 
+	success = true;
+	if (env->process_input(env) == emacs_process_input_quit) goto mutex_error;
+
 	// Compact all batches
 	size_t len = batches[0].len;
 	struct Candidate *xs = batches[0].xs;
@@ -311,7 +349,6 @@ emacs_value hotfuzz_filter(emacs_env *env, ptrdiff_t nargs, emacs_value args[], 
 
 	for (size_t i = len; i-- > 0;)
 		result = env->funcall(env, fcons, 2, (emacs_value[]) {xs[i].s->value, result});
-	success = true;
 
 mutex_error:
 	pthread_mutex_destroy(&shared.mutex);
@@ -340,14 +377,14 @@ int emacs_module_init(struct emacs_runtime *rt) {
 	env->funcall(env, env->intern(env, "defalias"), 2, (emacs_value[]) {
 			env->intern(env, "hotfuzz--filter-c"),
 			env->make_function(env, 2, 3, hotfuzz_filter,
-							   "Filter and sort CANDIDATES that match STRING.\n"
-							   "\n"
-							   "\(fn STRING CANDIDATES &optional IGNORE-CASE)",
-							   &data),
+				"Filter and sort CANDIDATES that match STRING.\n"
+				"\n"
+				"\(fn STRING CANDIDATES &optional IGNORE-CASE)",
+				&data),
 		});
 
 	env->funcall(env, env->intern(env, "provide"), 1,
-				 (emacs_value[]) { env->intern(env, "hotfuzz-module") });
+		(emacs_value[]) { env->intern(env, "hotfuzz-module") });
 
 	return 0;
 }
