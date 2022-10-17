@@ -59,6 +59,14 @@
     (should (equal (hotfuzz-filter "x" (list (make-string 4096 ?y) b a "x"))
                    (list "x" b a)))))
 
+(ert-deftest filter-long-needle-test ()
+  (let* ((needle (make-string (1+ hotfuzz--max-needle-len) ?x))
+         (a (concat needle "y")))
+    ;; With a too long search string candidates should only be
+    ;; filtered but not sorted.
+    (should (equal (hotfuzz-filter needle (list a "y" needle))
+                   (list a needle)))))
+
 (ert-deftest all-completions-test ()
   (let* ((completion-styles '(hotfuzz))
          (s "fb")
@@ -90,6 +98,16 @@
        6) ; Point as in "/usr/s|/man"
       '("share/" . 5)))))
 
+;;; Selectrum integration
+
+(ert-deftest hotfuzz-selectrum-mode-toggle-test ()
+  (hotfuzz-selectrum-mode)
+  (hotfuzz-selectrum-mode -1)
+  ;; Have to unbind variables when disabling for them to be set to
+  ;; their standard values when Selectrum is loaded.
+  (should-not (or (boundp 'selectrum-refine-candidates-function)
+                  (boundp 'selectrum-highlight-candidates-function))))
+
 ;;; Vertico integration
 
 (ert-deftest vertico--all-completions-advice-test ()
@@ -104,4 +122,4 @@
       (cl-destructuring-bind (xs . hl) (f "x" '("x") nil 1)
         ;; Highlighting should not yet have been applied
         (should (equal-including-properties xs '(#("x" 0 1 (completion-sorted t)))))
-        (should-not (null hl))))))
+        (should (functionp hl))))))

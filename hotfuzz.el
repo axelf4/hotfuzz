@@ -34,12 +34,10 @@
   "The number of top-ranking completions that should be highlighted.
 Large values will decrease performance. Only applies when using the
 Emacs `completion-styles' interface."
-  :group 'hotfuzz
   :type 'integer)
 
 (declare-function hotfuzz--filter-c "hotfuzz-module")
-;; If the dynamic module is available: Load it
-(require 'hotfuzz-module nil t)
+(require 'hotfuzz-module nil t) ; Load dynamic module if it is available
 
 ;; Since we pre-allocate the vectors the common optimization where
 ;; symmetricity w.r.t. to insertions/deletions means it suffices to
@@ -119,15 +117,14 @@ HAYSTACK has to be a match according to `hotfuzz-filter'."
   (let ((n (length haystack)) (m (length needle))
         (c hotfuzz--c) (d hotfuzz--d)
         (case-fold-search completion-ignore-case))
-    (if (or (> n hotfuzz--max-haystack-len) (> m hotfuzz--max-needle-len))
-        haystack ; Bail out if is too long
+    (unless (or (> n hotfuzz--max-haystack-len) (> m hotfuzz--max-needle-len))
       (fillarray c 10000)
       (fillarray d 10000)
       (hotfuzz--calc-bonus haystack)
       (cl-loop
        with rows = (cl-loop
                     with nc and nd
-                    for i below n and pc = c then nc and pd = d then nd with res = nil do
+                    for i below n and pc = c then nc and pd = d then nd with res do
                     (setq nc (make-vector m 0) nd (make-vector m 0))
                     (hotfuzz--match-row haystack needle i nc nd pc pd)
                     (push `(,nc . ,nd) res)
@@ -140,15 +137,15 @@ HAYSTACK has to be a match according to `hotfuzz-filter'."
                   (and (> i 0) (< (aref (cdar rows) j) (aref d j))))))
        (pop rows)
        (cl-decf i)
-       (add-face-text-property i (1+ i) 'completions-common-part nil haystack)
-       finally return haystack))))
+       (add-face-text-property i (1+ i) 'completions-common-part nil haystack))))
+  haystack)
 
 ;;;###autoload
-(cl-defun hotfuzz-filter (string candidates)
+(defun hotfuzz-filter (string candidates)
   "Filter CANDIDATES that match STRING and sort by the match costs.
 CANDIDATES should be a list of strings."
   (cond
-   ((not (<= 1 (length string) hotfuzz--max-needle-len)) candidates)
+   ((string= string "") candidates)
    ((featurep 'hotfuzz-module)
     (hotfuzz--filter-c string candidates completion-ignore-case))
    ((let ((re (concat
@@ -157,17 +154,19 @@ CANDIDATES should be a list of strings."
                 (lambda (ch) (format "[^%c]*%s" ch (regexp-quote (char-to-string ch))))
                 string "")))
           (case-fold-search completion-ignore-case))
-      (mapcar
-       #'car
-       (cl-sort (cl-loop for x in candidates if (string-match-p re x)
-                         collect (cons x (hotfuzz--cost string x)))
-                #'< :key #'cdr))))))
+      (if (> (length string) hotfuzz--max-needle-len)
+          (cl-loop for x in candidates if (string-match-p re x) collect x)
+        (cl-loop
+         for x in candidates if (string-match-p re x)
+         collect (cons x (hotfuzz--cost string x)) into xs
+         finally return (mapcar #'car (cl-sort xs #'< :key #'cdr))))))))
 
 ;;; Completion style implementation
 
 ;;;###autoload
 (defun hotfuzz-all-completions (string table pred point)
-  "Implementation of `completion-all-completions' that uses hotfuzz.
+  "Get hotfuzz-completions of STRING in TABLE.
+See `completion-all-completions' for the semantics of PRED and POINT.
 This function prematurely sorts the completions; mutating the returned
 list before passing it to `display-sort-function' or
 `cycle-sort-function' will lead to inaccuracies."
@@ -179,7 +178,7 @@ list before passing it to `display-sort-function' or
          (completion-regexp-list nil)
          (all (hotfuzz-filter
                needle
-               (if (and (listp table) (not (consp (car-safe table)))
+               (if (and (listp table) (not (consp (car table)))
                         (not (functionp table)) (not pred))
                    table
                  (all-completions prefix table pred)))))
@@ -190,12 +189,11 @@ list before passing it to `display-sort-function' or
         (cl-loop
          repeat hotfuzz-max-highlighted-completions and for x in-ref all do
          (setf x (hotfuzz-highlight needle (copy-sequence x))))
-        (unless (> hotfuzz-max-highlighted-completions 0)
+        (when (zerop hotfuzz-max-highlighted-completions)
           (setcar all (copy-sequence (car all))))
         (put-text-property 0 1 'completion-sorted t (car all)))
       (if (string= prefix "") all (nconc all (length prefix))))))
 
-;; ;;;###autoload
 (defun hotfuzz--adjust-metadata (metadata)
   "Adjust completion METADATA for hotfuzz sorting."
   (let ((existing-dsf (completion-metadata-get metadata 'display-sort-function))
@@ -211,7 +209,7 @@ list before passing it to `display-sort-function' or
       `(metadata
         (display-sort-function . ,(compose-sort-fn (or existing-dsf #'identity)))
         (cycle-sort-function . ,(compose-sort-fn (or existing-csf #'identity)))
-        ,@(cdr metadata)))))
+        . ,@(cdr metadata)))))
 
 ;;;###autoload
 (progn
@@ -238,7 +236,6 @@ list before passing it to `display-sort-function' or
 ;;;###autoload
 (define-minor-mode hotfuzz-selectrum-mode
   "Minor mode that enables hotfuzz in Selectrum menus."
-  :group 'hotfuzz
   :global t
   (if hotfuzz-selectrum-mode
       (setq hotfuzz--prev-selectrum-functions
@@ -249,7 +246,7 @@ list before passing it to `display-sort-function' or
             selectrum-refine-candidates-function #'hotfuzz-filter
             selectrum-highlight-candidates-function #'hotfuzz--highlight-all)
     (cl-flet ((restore
-               (sym old our &aux (standard (car-safe (get sym 'standard-value))))
+               (sym old our &aux (standard (car (get sym 'standard-value))))
                (cond ((not (eq (symbol-value sym) our)))
                      (old (set sym old))
                      (standard (set sym (eval standard t)))
@@ -283,7 +280,6 @@ Contrary to what the name might suggest, this mode does not
 automatically enable Hotfuzz. You still have to choose when it gets
 used by customizing e.g. `completion-styles'."
   :global t
-  :group 'hotfuzz
   (if hotfuzz-vertico-mode
       (advice-add #'vertico--all-completions :around #'hotfuzz--vertico--all-completions-advice)
     (advice-remove #'vertico--all-completions #'hotfuzz--vertico--all-completions-advice)))

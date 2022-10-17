@@ -44,7 +44,6 @@ static uint64_t tolower8(uint64_t x) {
 	return x | is_upper >> 2;
 }
 
-
 static void strtolower(struct EmacsStr *s) {
 	// Complicated in order to optimize out the calls to tolower_utf8
 	// on AMD64 System V with GCC 11.3.0.
