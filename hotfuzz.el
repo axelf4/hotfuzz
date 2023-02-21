@@ -24,6 +24,7 @@
 ;;      linear space." Bioinformatics 4.1 (1988): 11-17.
 
 (eval-when-compile (require 'cl-lib))
+(declare-function hotfuzz--filter-c "hotfuzz-module")
 
 (defgroup hotfuzz nil
   "Fuzzy completion style."
@@ -35,9 +36,6 @@
 Large values will decrease performance. Only applies when using the
 Emacs `completion-styles' interface."
   :type 'integer)
-
-(declare-function hotfuzz--filter-c "hotfuzz-module")
-(require 'hotfuzz-module nil t) ; Load dynamic module if it is available
 
 ;; Since we pre-allocate the vectors the common optimization where
 ;; symmetricity w.r.t. to insertions/deletions means it suffices to
@@ -127,7 +125,7 @@ HAYSTACK has to be a match according to `hotfuzz-filter'."
                     for i below n and pc = c then nc and pd = d then nd with res do
                     (setq nc (make-vector m 0) nd (make-vector m 0))
                     (hotfuzz--match-row haystack needle i nc nd pc pd)
-                    (push `(,nc . ,nd) res)
+                    (push (cons nc nd) res)
                     finally return res)
        ;; Backtrack to find matching positions
        for j from (1- m) downto 0 with i = n do
@@ -146,7 +144,7 @@ HAYSTACK has to be a match according to `hotfuzz-filter'."
 CANDIDATES should be a list of strings."
   (cond
    ((string= string "") candidates)
-   ((featurep 'hotfuzz-module)
+   ((require 'hotfuzz-module nil t)
     (hotfuzz--filter-c string candidates completion-ignore-case))
    ((let ((re (concat
                "\\`"
@@ -158,8 +156,8 @@ CANDIDATES should be a list of strings."
           (cl-loop for x in candidates if (string-match-p re x) collect x)
         (cl-loop
          for x in candidates if (string-match-p re x)
-         collect (cons x (hotfuzz--cost string x)) into xs
-         finally return (mapcar #'car (cl-sort xs #'< :key #'cdr))))))))
+         collect (cons (hotfuzz--cost string x) x) into xs
+         finally return (mapcar #'cdr (cl-sort xs #'car-less-than-car))))))))
 
 ;;; Completion style implementation
 
