@@ -207,7 +207,7 @@ list before passing it to `display-sort-function' or
       `(metadata
         (display-sort-function . ,(compose-sort-fn (or existing-dsf #'identity)))
         (cycle-sort-function . ,(compose-sort-fn (or existing-csf #'identity)))
-        . ,@(cdr metadata)))))
+        . ,(cdr metadata)))))
 
 ;;;###autoload
 (progn
