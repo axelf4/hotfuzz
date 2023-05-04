@@ -25,7 +25,7 @@ find_package(Threads REQUIRED)
 
 add_library(hotfuzz-module MODULE hotfuzz-module.c)
 set_target_properties(hotfuzz-module PROPERTIES
-  C_STANDARD 99
+  C_STANDARD 11
   POSITION_INDEPENDENT_CODE ON
   PREFIX ""
   LIBRARY_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR})
