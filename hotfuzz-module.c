@@ -10,7 +10,7 @@
 #include <string.h>
 #include <emacs-module.h>
 #include <pthread.h>
-#include <sys/sysinfo.h>
+#include <unistd.h>
 
 #define MIN(a, b) ({ __typeof__(a) _a = (a), _b = (b); _a < _b ? _a : _b; })
 #define MAX(a, b) ({ __typeof__(a) _a = (a), _b = (b); _a > _b ? _a : _b; })
@@ -369,7 +369,7 @@ int emacs_module_init(struct emacs_runtime *rt) {
 		return 2;
 
 	static struct Data data;
-	data.max_workers = get_nprocs();
+	data.max_workers = sysconf(_SC_NPROCESSORS_ONLN);
 	if (!(data.workers = malloc(data.max_workers * sizeof *data.workers)))
 		return 1;
 
