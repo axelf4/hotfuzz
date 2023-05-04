@@ -142,7 +142,9 @@ HAYSTACK has to be a match according to `hotfuzz-filter'."
   "Evaluate BODY for each element of LIST and return nil.
 Each element of LIST in turn is bound to `it' and its index
 within LIST to `it-index' before evaluating BODY.
-This is the anaphoric counterpart to `-each'."
+This is the anaphoric counterpart to `-each'.
+
+Shamelessly lifted from dash: https://github.com/magnars/dash.el"
   (let ((l (make-symbol "list"))
         (i (make-symbol "i")))
     `(let ((,l ,list)
@@ -159,7 +161,9 @@ Like `--filter', but returns the non-nil results of FORM instead
 of the corresponding elements of LIST.  Each element of LIST in
 turn is bound to `it' and its index within LIST to `it-index'
 before evaluating FORM.
-This is the anaphoric counterpart to `-keep'."
+This is the anaphoric counterpart to `-keep'.
+
+Shamelessly lifted from dash: https://github.com/magnars/dash.el"
   (let ((r (make-symbol "result"))
         (m (make-symbol "mapped")))
     `(let (,r)
