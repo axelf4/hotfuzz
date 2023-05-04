@@ -138,6 +138,53 @@ HAYSTACK has to be a match according to `hotfuzz-filter'."
        (add-face-text-property i (1+ i) 'completions-common-part nil haystack))))
   haystack)
 
+(defmacro hotfuzz--dash-each (list &rest body)
+  "Evaluate BODY for each element of LIST and return nil.
+Each element of LIST in turn is bound to `it' and its index
+within LIST to `it-index' before evaluating BODY.
+This is the anaphoric counterpart to `-each'."
+  (let ((l (make-symbol "list"))
+        (i (make-symbol "i")))
+    `(let ((,l ,list)
+           (,i 0))
+       (while ,l
+         (let ((it (pop ,l)) (it-index ,i))
+           (ignore it it-index)
+           ,@body)
+         (setq ,i (1+ ,i))))))
+
+(defmacro hotfuzz--dash-keep (form list)
+  "Eval FORM for each item in LIST and return the non-nil results.
+Like `--filter', but returns the non-nil results of FORM instead
+of the corresponding elements of LIST.  Each element of LIST in
+turn is bound to `it' and its index within LIST to `it-index'
+before evaluating FORM.
+This is the anaphoric counterpart to `-keep'."
+  (let ((r (make-symbol "result"))
+        (m (make-symbol "mapped")))
+    `(let (,r)
+       (hotfuzz--dash-each ,list (let ((,m ,form)) (when ,m (push ,m ,r))))
+       (nreverse ,r))))
+
+(defun hotfuzz--fix-tofu-chars (orig-fun string candidates &optional ignore-case)
+  "Workaround tofu chars (in e.g. consult) for native module filtering."
+  (let*
+      ((table (make-hash-table :test #'eq :size (length candidates)))
+       (cands
+        (hotfuzz--dash-keep
+         (when (stringp it)
+           (let ((encoded (encode-coding-string it 'no-conversion 'nocopy)))
+             (setf (gethash encoded table) it)
+             (and (< (length encoded) hotfuzz--max-haystack-len) encoded)))
+         candidates))
+       (raw-str (encode-coding-string string 'no-conversion 'nocopy))
+       (ans
+        (let
+            ((gc-cons-threshold most-positive-fixnum)
+             (gc-cons-percentage 1.0))
+          (funcall orig-fun raw-str cands ignore-case))))
+    (hotfuzz--dash-keep (gethash it table) ans)))
+
 ;;;###autoload
 (defun hotfuzz-filter (string candidates)
   "Filter CANDIDATES that match STRING and sort by the match costs.
