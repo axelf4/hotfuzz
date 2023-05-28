@@ -70,7 +70,7 @@ Emacs `completion-styles' interface."
 
 (defun hotfuzz--calc-bonus (haystack)
   "Precompute all potential bonuses for matching certain characters in HAYSTACK."
-  (cl-loop for ch across haystack and i = 0 then (1+ i) and lastch = ?/ then ch do
+  (cl-loop for ch across haystack and i from 0 and lastch = ?/ then ch do
            (aset hotfuzz--bonus i
                  (aref (aref hotfuzz--bonus-prev-luts (aref hotfuzz--bonus-cur-lut ch)) lastch))))
 
@@ -121,20 +121,18 @@ HAYSTACK has to be a match according to `hotfuzz-filter'."
       (hotfuzz--calc-bonus haystack)
       (cl-loop
        with rows = (cl-loop
-                    with nc and nd
-                    for i below n and pc = c then nc and pd = d then nd with res do
+                    with nc and nd and res
+                    for i below n and pc = c then nc and pd = d then nd do
                     (setq nc (make-vector m 0) nd (make-vector m 0))
                     (hotfuzz--match-row haystack needle i nc nd pc pd)
                     (push (cons nc nd) res)
                     finally return res)
        ;; Backtrack to find matching positions
-       for j from (1- m) downto 0 with i = n do
-       (when (<= (aref (cdar rows) j) (aref (caar rows) j))
-         (while (cl-destructuring-bind (_c . d) (pop rows)
-                  (cl-decf i)
-                  (and (> i 0) (< (aref (cdar rows) j) (aref d j))))))
-       (pop rows)
-       (cl-decf i)
+       for j from (1- m) downto 0 and i downfrom (1- n) do
+       (cl-destructuring-bind (c . d) (pop rows)
+         (when (<= (aref d j) (aref c j))
+           (while (progn (cl-decf i)
+                         (> (aref d j) (aref (setq d (cdr (pop rows))) j))))))
        (add-face-text-property i (1+ i) 'completions-common-part nil haystack))))
   haystack)
 
@@ -173,7 +171,7 @@ list before passing it to `display-sort-function' or
          (bounds (completion-boundaries beforepoint table pred afterpoint))
          (prefix (substring beforepoint 0 (car bounds)))
          (needle (substring beforepoint (car bounds)))
-         (completion-regexp-list nil)
+         completion-regexp-list
          (all (hotfuzz-filter
                needle
                (if (and (listp table) (not (consp (car table)))
