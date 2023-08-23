@@ -13,16 +13,11 @@ To use hotfuzz, add it to the `completion-styles` list:
 ```elisp
 (setq completion-styles '(hotfuzz))
 ```
-
-Or, if using
-[Fido](https://www.gnu.org/software/emacs/manual/html_node/emacs/Icomplete.html),
-add hotfuzz to the `completion-styles` list this way:
-
+Or, if using [Fido], add hotfuzz to the `completion-styles` list this way:
 ```elisp
 (add-hook 'icomplete-minibuffer-setup-hook
           (lambda () (setq-local completion-styles '(hotfuzz))))
 ```
-or, if using [Selectrum], enable `hotfuzz-selectrum-mode`.
 
 **Note:** Highlighting of the matched characters is only applied to
 the first `hotfuzz-max-highlighted-completions` completions, out of
@@ -36,8 +31,8 @@ using
 ```
 provided you are completing small enough lists and/or do not encounter
 performance problems.
-This is a non-issue when using `hotfuzz-selectrum-mode` since
-Selectrum supports lazy highlighting.
+This is a non-issue when using `hotfuzz-vertico-mode` since
+Vertico supports lazy highlighting.
 
 ## Customization
 
@@ -106,7 +101,8 @@ but does no sorting and allows the individual sub-patterns to overlap
 Hotfuzz on the other hand tries to be more *clever* about sorting,
 and so users who dislike that may prefer orderless.
 
-[Selectrum]: https://github.com/raxod502/selectrum
+[Vertico]: https://github.com/minad/vertico
+[Fido]: https://www.gnu.org/software/emacs/manual/html_node/emacs/Icomplete.html
 [flx]: https://github.com/lewang/flx
 [Ido]: https://www.gnu.org/software/emacs/manual/html_node/ido/index.html
 [orderless]: https://github.com/oantolin/orderless

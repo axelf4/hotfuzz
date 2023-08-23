@@ -98,16 +98,6 @@
        6) ; Point as in "/usr/s|/man"
       '("share/" . 5)))))
 
-;;; Selectrum integration
-
-(ert-deftest hotfuzz-selectrum-mode-toggle-test ()
-  (hotfuzz-selectrum-mode)
-  (hotfuzz-selectrum-mode -1)
-  ;; Have to unbind variables when disabling for them to be set to
-  ;; their standard values when Selectrum is loaded.
-  (should-not (or (boundp 'selectrum-refine-candidates-function)
-                  (boundp 'selectrum-highlight-candidates-function))))
-
 ;;; Vertico integration
 
 (ert-deftest vertico--all-completions-advice-test ()

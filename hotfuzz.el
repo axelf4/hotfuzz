@@ -215,42 +215,6 @@ list before passing it to `display-sort-function' or
                '(hotfuzz completion-flex-try-completion hotfuzz-all-completions
                          "Fuzzy completion.")))
 
-;;; Selectrum integration
-
-(defun hotfuzz--highlight-all (string candidates)
-  "Highlight where STRING matches in the elements of CANDIDATES."
-  (mapcar (lambda (candidate)
-            (hotfuzz-highlight string (copy-sequence candidate)))
-          candidates))
-
-(defvar selectrum-refine-candidates-function)
-(defvar selectrum-highlight-candidates-function)
-
-(defvar hotfuzz--prev-selectrum-functions nil
-  "Previous values of the Selectrum sort/filter/highlight API endpoints.")
-
-;;;###autoload
-(define-minor-mode hotfuzz-selectrum-mode
-  "Minor mode that enables hotfuzz in Selectrum menus."
-  :global t
-  (if hotfuzz-selectrum-mode
-      (setq hotfuzz--prev-selectrum-functions
-            `(,(when (boundp 'selectrum-refine-candidates-function)
-                 selectrum-refine-candidates-function)
-              . ,(when (boundp 'selectrum-highlight-candidates-function)
-                   selectrum-highlight-candidates-function))
-            selectrum-refine-candidates-function #'hotfuzz-filter
-            selectrum-highlight-candidates-function #'hotfuzz--highlight-all)
-    (cl-flet ((restore
-               (sym old our &aux (standard (car (get sym 'standard-value))))
-               (cond ((not (eq (symbol-value sym) our)))
-                     (old (set sym old))
-                     (standard (set sym (eval standard t)))
-                     (t (makunbound sym)))))
-      (cl-destructuring-bind (old-rcf . old-hcf) hotfuzz--prev-selectrum-functions
-        (restore 'selectrum-refine-candidates-function old-rcf #'hotfuzz-filter)
-        (restore 'selectrum-highlight-candidates-function old-hcf #'hotfuzz--highlight-all)))))
-
 ;;; Vertico integration
 
 (declare-function vertico--all-completions "ext:vertico")
