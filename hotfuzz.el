@@ -218,6 +218,7 @@ list before passing it to `display-sort-function' or
 ;;; Vertico integration
 
 (declare-function vertico--all-completions "ext:vertico")
+(declare-function corfu--all-completions "ext:corfu")
 
 (defun hotfuzz--vertico--all-completions-advice (fun &rest args)
   "Advice for FUN `vertico--all-completions' to defer hotfuzz highlighting."
@@ -235,14 +236,16 @@ list before passing it to `display-sort-function' or
 
 ;;;###autoload
 (define-minor-mode hotfuzz-vertico-mode
-  "Toggle Hotfuzz compatibility code for the Vertico completion system.
-Contrary to what the name might suggest, this mode does not
-automatically enable Hotfuzz. You still have to choose when it gets
-used by customizing e.g. `completion-styles'."
+  "Toggle hotfuzz compatibility code for the Vertico&Corfu completion systems.
+Contrary to what the name might suggest, this mode does not enable
+hotfuzz. You still have to customize e.g. `completion-styles'."
   :global t
   (if hotfuzz-vertico-mode
-      (advice-add #'vertico--all-completions :around #'hotfuzz--vertico--all-completions-advice)
-    (advice-remove #'vertico--all-completions #'hotfuzz--vertico--all-completions-advice)))
+      (progn
+        (advice-add #'vertico--all-completions :around #'hotfuzz--vertico--all-completions-advice)
+        (advice-add #'corfu--all-completions :around #'hotfuzz--vertico--all-completions-advice))
+    (advice-remove #'vertico--all-completions #'hotfuzz--vertico--all-completions-advice)
+    (advice-remove #'corfu--all-completions #'hotfuzz--vertico--all-completions-advice)))
 
 (provide 'hotfuzz)
 ;;; hotfuzz.el ends here
