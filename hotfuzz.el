@@ -1,8 +1,8 @@
-;;; hotfuzz.el --- Fuzzy completion style  -*- lexical-binding: t; -*-
+;;; hotfuzz.el --- Fuzzy completion style  -*- lexical-binding: t -*-
 
-;; Copyright 2021 Axel Forsman
+;; Copyright (C) 2021 Axel Forsman
 
-;; Author: Axel Forsman <axelsfor@gmail.com>
+;; Author: Axel Forsman <axel@axelf.se>
 ;; Version: 0.1
 ;; Package-Requires: ((emacs "27.1"))
 ;; Keywords: matching
@@ -28,16 +28,14 @@
 
 (defgroup hotfuzz nil
   "Fuzzy completion style."
-  :group 'minibuffer
-  :link '(url-link :tag "GitHub" "https://github.com/axelf4/hotfuzz"))
+  :group 'minibuffer)
 
 (defcustom hotfuzz-max-highlighted-completions 25
   "The number of top-ranking completions that should be highlighted.
-Large values will decrease performance. Only applies when using the
-Emacs `completion-styles' interface."
+Large values will decrease performance."
   :type 'integer)
 
-;; Since we pre-allocate the vectors the common optimization where
+;; Since the vectors are pre-allocated the optimization where
 ;; symmetricity w.r.t. to insertions/deletions means it suffices to
 ;; allocate min(#needle, #haystack) for C/D when only calculating the
 ;; cost does not apply.
@@ -71,8 +69,8 @@ Emacs `completion-styles' interface."
 (defun hotfuzz--calc-bonus (haystack)
   "Precompute all potential bonuses for matching certain characters in HAYSTACK."
   (cl-loop for ch across haystack and i from 0 and lastch = ?/ then ch do
-           (aset hotfuzz--bonus i
-                 (aref (aref hotfuzz--bonus-prev-luts (aref hotfuzz--bonus-cur-lut ch)) lastch))))
+           (let ((lut (aref hotfuzz--bonus-prev-luts (aref hotfuzz--bonus-cur-lut ch))))
+             (aset hotfuzz--bonus i (aref lut lastch)))))
 
 ;; Aᵢ denotes the prefix a₀,...,aᵢ₋₁ of A
 (defun hotfuzz--match-row (a b i nc nd pc pd)
@@ -82,11 +80,11 @@ the minimum cost when aᵢ is deleted. The costs for row I are written
 into NC/ND, using the costs for row I-1 in PC/PD. The vectors NC/PC
 and ND/PD respectively may alias."
   (cl-loop
-   with m = (length b) and oldc
+   with m = (length b)
    and g = 100 and h = 5 ; Every k-symbol gap is penalized by g+hk
    ;; s threads the old value C[i-1][j-1] throughout the loop
-   for j below m and s = (if (zerop i) 0 (+ g (* h i))) then oldc do
-   (setq oldc (aref pc j))
+   for j below m and s = (if (zerop i) 0 (+ g (* h i))) then oldc
+   for oldc = (aref pc j) do
    ;; Either extend optimal conversion of (i) Aᵢ₋₁ to Bⱼ₋₁, by
    ;; matching bⱼ (C[i-1,j-1]-bonus); or (ii) Aᵢ₋₁ to Bⱼ, by deleting
    ;; aᵢ and opening a new gap (C[i-1,j]+g+h) or enlarging the
@@ -99,19 +97,17 @@ and ND/PD respectively may alias."
 
 (defun hotfuzz--cost (needle haystack)
   "Return the difference score of NEEDLE and the match HAYSTACK."
-  (let ((n (length haystack)) (m (length needle))
-        (c hotfuzz--c) (d hotfuzz--d))
+  (let ((n (length haystack)) (m (length needle)))
     (if (> n hotfuzz--max-haystack-len)
         10000
-      (fillarray c 10000)
-      (fillarray d 10000)
       (hotfuzz--calc-bonus haystack)
-      (dotimes (i n) (hotfuzz--match-row haystack needle i c d c d))
-      (aref c (1- m))))) ; Final cost
+      (let ((c (fillarray hotfuzz--c 10000)) (d (fillarray hotfuzz--d 10000)))
+        (dotimes (i n) (hotfuzz--match-row haystack needle i c d c d))
+        (aref c (1- m)))))) ; Final cost
 
 (defun hotfuzz-highlight (needle haystack)
   "Highlight the characters that NEEDLE matched in HAYSTACK.
-HAYSTACK has to be a match according to `hotfuzz-filter'."
+HAYSTACK has to be a match according to `hotfuzz-all-completions'."
   (let ((n (length haystack)) (m (length needle))
         (c hotfuzz--c) (d hotfuzz--d)
         (case-fold-search completion-ignore-case))
@@ -120,71 +116,62 @@ HAYSTACK has to be a match according to `hotfuzz-filter'."
       (fillarray d 10000)
       (hotfuzz--calc-bonus haystack)
       (cl-loop
-       with rows = (cl-loop
-                    with nc and nd and res
-                    for i below n and pc = c then nc and pd = d then nd do
-                    (setq nc (make-vector m 0) nd (make-vector m 0))
-                    (hotfuzz--match-row haystack needle i nc nd pc pd)
-                    (push (cons nc nd) res)
-                    finally return res)
+       with rows initially
+       (cl-loop for i below n and pc = c then nc and pd = d then nd
+                and nc = (make-vector m 0) and nd = (make-vector m 0) do
+                (hotfuzz--match-row haystack needle i nc nd pc pd)
+                (push (cons nc nd) rows))
        ;; Backtrack to find matching positions
        for j from (1- m) downto 0 and i downfrom (1- n) do
        (cl-destructuring-bind (c . d) (pop rows)
          (when (<= (aref d j) (aref c j))
-           (while (progn (cl-decf i)
+           (while (progn (setq i (1- i))
                          (> (aref d j) (aref (setq d (cdr (pop rows))) j))))))
        (add-face-text-property i (1+ i) 'completions-common-part nil haystack))))
   haystack)
 
-;;;###autoload
-(defun hotfuzz-filter (string candidates)
-  "Filter CANDIDATES that match STRING and sort by the match costs.
-CANDIDATES should be a list of strings."
-  (cond
-   ((string= string "") candidates)
-   ((require 'hotfuzz-module nil t)
-    (hotfuzz--filter-c string candidates completion-ignore-case))
-   ((let ((re (concat
-               "\\`"
-               (mapconcat
-                (lambda (ch) (format "[^%c]*%s" ch (regexp-quote (char-to-string ch))))
-                string "")))
-          (case-fold-search completion-ignore-case))
-      (if (> (length string) hotfuzz--max-needle-len)
-          (cl-loop for x in candidates if (string-match-p re x) collect x)
-        (cl-loop
-         for x in candidates if (string-match-p re x)
-         collect (cons (hotfuzz--cost string x) x) into xs
-         finally return (mapcar #'cdr (cl-sort xs #'car-less-than-car))))))))
-
 ;;; Completion style implementation
 
 ;;;###autoload
-(defun hotfuzz-all-completions (string table pred point)
+(defun hotfuzz-all-completions (string table &optional pred point)
   "Get hotfuzz-completions of STRING in TABLE.
 See `completion-all-completions' for the semantics of PRED and POINT.
 This function prematurely sorts the completions; mutating the returned
 list before passing it to `display-sort-function' or
 `cycle-sort-function' will lead to inaccuracies."
+  (unless point (setq point (length string)))
   (let* ((beforepoint (substring string 0 point))
          (afterpoint (substring string point))
          (bounds (completion-boundaries beforepoint table pred afterpoint))
          (prefix (substring beforepoint 0 (car bounds)))
          (needle (substring beforepoint (car bounds)))
-         completion-regexp-list
-         (all (hotfuzz-filter
-               needle
-               (if (and (listp table) (not (consp (car table)))
-                        (not (functionp table)) (not pred))
-                   table
-                 (all-completions prefix table pred)))))
+         (use-module-p (require 'hotfuzz-module nil t))
+         (case-fold-search completion-ignore-case)
+         (completion-regexp-list
+          (if use-module-p completion-regexp-list
+            (let ((re (mapconcat
+                       (lambda (ch) (let ((s (char-to-string ch)))
+                                      (concat "[^" s "]*" (regexp-quote s))))
+                       needle "")))
+              (cons (concat "\\`" re) completion-regexp-list))))
+         (all (if (and (string= prefix "") (or (stringp (car-safe table)) (null table))
+                       (not (or pred completion-regexp-list (string= needle ""))))
+                  table
+                (all-completions prefix table pred))))
+    ;; `completion-pcm--all-completions' tests completion-regexp-list
+    ;; again with functional tables even though they should handle it.
+    (cond
+     ((or (null all) (string= needle "")))
+     (use-module-p (setq all (hotfuzz--filter-c needle all completion-ignore-case)))
+     ((> (length needle) hotfuzz--max-needle-len))
+     (t (cl-loop for x in-ref all do (setf x (cons (hotfuzz--cost needle x) x))
+                 finally (setq all (mapcar #'cdr (sort all #'car-less-than-car))))))
     (when all
       (unless (string= needle "")
-        ;; Highlighting all completions without deferred highlighting
-        ;; (bug#47711) would take too long.
-        (cl-loop
-         repeat hotfuzz-max-highlighted-completions and for x in-ref all do
-         (setf x (hotfuzz-highlight needle (copy-sequence x))))
+        ;; Without deferred highlighting (bug#47711) only highlight
+        ;; the top completions.
+        (cl-loop repeat hotfuzz-max-highlighted-completions and for x in-ref all
+                 do (setf x (hotfuzz-highlight needle (copy-sequence x))))
         (when (zerop hotfuzz-max-highlighted-completions)
           (setcar all (copy-sequence (car all))))
         (put-text-property 0 1 'completion-sorted t (car all)))
@@ -194,14 +181,12 @@ list before passing it to `display-sort-function' or
   "Adjust completion METADATA for hotfuzz sorting."
   (let ((existing-dsf (completion-metadata-get metadata 'display-sort-function))
         (existing-csf (completion-metadata-get metadata 'cycle-sort-function)))
-    (cl-flet
-        ((compose-sort-fn
-          (existing-sort-fn)
-          (lambda (completions)
-            (if (or (null completions)
-                    (get-text-property 0 'completion-sorted (car completions)))
-                completions
-              (funcall existing-sort-fn completions)))))
+    (cl-flet ((compose-sort-fn (existing-sort-fn)
+                (lambda (completions)
+                  (if (or (null completions)
+                          (get-text-property 0 'completion-sorted (car completions)))
+                      completions
+                    (funcall existing-sort-fn completions)))))
       `(metadata
         (display-sort-function . ,(compose-sort-fn (or existing-dsf #'identity)))
         (cycle-sort-function . ,(compose-sort-fn (or existing-csf #'identity)))

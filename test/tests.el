@@ -45,18 +45,18 @@
 (ert-deftest case-sensitivity-test ()
   (let ((xs '("aa" "aA " "Aa  " "AA   ")))
     (let ((completion-ignore-case nil))
-      (should (equal (hotfuzz-filter "a" xs) '("aa" "aA " "Aa  ")))
-      (should (equal (hotfuzz-filter "A" xs) '("Aa  " "AA   " "aA "))))
+      (should (equal (hotfuzz-all-completions "a" xs) '("aa" "aA " "Aa  ")))
+      (should (equal (hotfuzz-all-completions "A" xs) '("Aa  " "AA   " "aA "))))
     (let ((completion-ignore-case t))
-      (should (equal (hotfuzz-filter "a" xs) xs))
-      (should (equal (hotfuzz-filter "A" xs) xs)))))
+      (should (equal (hotfuzz-all-completions "a" xs) xs))
+      (should (equal (hotfuzz-all-completions "A" xs) xs)))))
 
 (ert-deftest long-candidates-test ()
   (let ((a (make-string 4096 ?x))
         (b (concat (make-string 2047 ?y) "x" (make-string 2048 ?y))))
     ;; Too long candidates should still be filtered with matches
     ;; lumped together at the end in their original order.
-    (should (equal (hotfuzz-filter "x" (list (make-string 4096 ?y) b a "x"))
+    (should (equal (hotfuzz-all-completions "x" (list (make-string 4096 ?y) b a "x"))
                    (list "x" b a)))))
 
 (ert-deftest filter-long-needle-test ()
@@ -64,7 +64,7 @@
          (a (concat needle "y")))
     ;; With a too long search string candidates should only be
     ;; filtered but not sorted.
-    (should (equal (hotfuzz-filter needle (list a "y" needle))
+    (should (equal (hotfuzz-all-completions needle (list a "y" needle))
                    (list a needle)))))
 
 (ert-deftest all-completions-test ()
@@ -87,13 +87,12 @@
       (completion-all-completions
        "/usr/s/man"
        (lambda (string _pred action)
-         (let ((prefix-len (length (file-name-directory string))))
+         (let ((dir (file-name-directory string)))
            (pcase action
              ('metadata '(metadata (category . file)))
              (`(boundaries . ,suffix)
-              `(boundaries ,prefix-len . ,(string-match-p "/" suffix)))
-             ('t (mapcar (lambda (x) (substring x prefix-len))
-                         (list "/usr/bin/" "/usr/share/" "/usr/local/"))))))
+              `(boundaries ,(length dir) . ,(string-match-p "/" suffix)))
+             ('t (all-completions "" '("bin/" "share/" "local/"))))))
        nil
        6) ; Point as in "/usr/s|/man"
       '("share/" . 5)))))
