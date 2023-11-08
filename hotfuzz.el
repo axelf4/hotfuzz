@@ -124,8 +124,6 @@ HAYSTACK has to be a match according to `hotfuzz-all-completions'."
        (add-face-text-property i (1+ i) 'completions-common-part nil haystack))))
   haystack)
 
-;;; Completion style implementation
-
 ;;;###autoload
 (defun hotfuzz-all-completions (string table &optional pred point)
   "Get hotfuzz-completions of STRING in TABLE.
@@ -162,13 +160,12 @@ list before passing it to `display-sort-function' or
                  finally (setq all (mapcar #'cdr (sort all #'car-less-than-car))))))
     (when all
       (unless (string= needle "")
-        ;; Without deferred highlighting (bug#47711) only highlight
-        ;; the top completions.
-        (cl-loop repeat hotfuzz-max-highlighted-completions and for x in-ref all
-                 do (setf x (hotfuzz-highlight needle (copy-sequence x))))
-        (when (zerop hotfuzz-max-highlighted-completions)
-          (setcar all (copy-sequence (car all))))
-        (put-text-property 0 1 'completion-sorted t (car all)))
+        (defvar completion-lazy-hilit-fn) ; Introduced in Emacs 30 (bug#47711)
+        (if (bound-and-true-p completion-lazy-hilit)
+            (setq completion-lazy-hilit-fn (apply-partially #'hotfuzz-highlight needle))
+          (cl-loop repeat hotfuzz-max-highlighted-completions and for x in-ref all
+                   do (setf x (hotfuzz-highlight needle (copy-sequence x)))))
+        (setcar all (propertize (car all) 'completion-sorted t)))
       (if (string= prefix "") all (nconc all (length prefix))))))
 
 (defun hotfuzz--adjust-metadata (metadata)
@@ -194,37 +191,8 @@ list before passing it to `display-sort-function' or
                '(hotfuzz completion-flex-try-completion hotfuzz-all-completions
                          "Fuzzy completion.")))
 
-;;; Vertico integration
-
-(declare-function vertico--all-completions "ext:vertico")
-(declare-function corfu--all-completions "ext:corfu")
-
-(defun hotfuzz--vertico--all-completions-advice (fun &rest args)
-  "Advice for FUN `vertico--all-completions' to defer hotfuzz highlighting."
-  (cl-letf* ((hl nil)
-             ((symbol-function #'hotfuzz-highlight)
-              (lambda (pattern cand)
-                (setq hl (apply-partially
-                          #'mapcar
-                          (lambda (x) (hotfuzz-highlight pattern (copy-sequence x)))))
-                cand))
-             (hotfuzz-max-highlighted-completions 1)
-             (result (apply fun args)))
-    (when hl (setcdr result hl))
-    result))
-
 ;;;###autoload
-(define-minor-mode hotfuzz-vertico-mode
-  "Toggle hotfuzz compatibility code for the Vertico&Corfu completion systems.
-Contrary to what the name might suggest, this mode does not enable
-hotfuzz. You still have to customize e.g. `completion-styles'."
-  :global t
-  (if hotfuzz-vertico-mode
-      (progn
-        (advice-add #'vertico--all-completions :around #'hotfuzz--vertico--all-completions-advice)
-        (advice-add #'corfu--all-completions :around #'hotfuzz--vertico--all-completions-advice))
-    (advice-remove #'vertico--all-completions #'hotfuzz--vertico--all-completions-advice)
-    (advice-remove #'corfu--all-completions #'hotfuzz--vertico--all-completions-advice)))
+(define-obsolete-function-alias 'hotfuzz-vertico-mode #'ignore "0.1")
 
 (provide 'hotfuzz)
 ;;; hotfuzz.el ends here

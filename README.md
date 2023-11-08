@@ -19,20 +19,19 @@ Or, if using [Fido], add hotfuzz to the `completion-styles` list this way:
           (lambda () (setq-local completion-styles '(hotfuzz))))
 ```
 
-**Note:** Highlighting of the matched characters is only applied to
+**Note:** Unless the completion UI supports the
+`completion-lazy-hilit` variable, as i.a. [Vertico] and [Corfu] do,
+then highlighting of the matched characters will only be applied to
 the first `hotfuzz-max-highlighted-completions` completions, out of
-performance concerns. The default value is large enough so that
-generally you will need to scroll the list of completions beyond the
-second page to first see non-highlighted completions. If you are
-annoyed by this you can make it highlight all completions instead
-using
+performance concerns. The default value is large enough that generally
+the list of completions will need to be scrolled beyond the second
+page to reach non-highlighted completions. If you are annoyed by this
+you can make it highlight all completions instead using
 ```elisp
 (setq hotfuzz-max-highlighted-completions most-positive-fixnum)
 ```
 provided you are completing small enough lists and/or do not encounter
 performance problems.
-This is a non-issue when using `hotfuzz-vertico-mode` since
-Vertico supports lazy highlighting.
 
 ## Customization
 
@@ -98,11 +97,12 @@ to match according to any other completion style.
 It is very customizable,
 but does no sorting and allows the individual sub-patterns to overlap
 (`"foo foo"` filters no additional items compared to `"foo"`).
-Hotfuzz on the other hand tries to be more *clever* about sorting,
+Hotfuzz on the other hand tries to be more clever about sorting,
 and so users who dislike that may prefer orderless.
 
 [Vertico]: https://github.com/minad/vertico
+[Corfu]: https://github.com/minad/corfu
+[Ido]: https://www.gnu.org/software/emacs/manual/html_node/ido/index.html
 [Fido]: https://www.gnu.org/software/emacs/manual/html_node/emacs/Icomplete.html
 [flx]: https://github.com/lewang/flx
-[Ido]: https://www.gnu.org/software/emacs/manual/html_node/ido/index.html
 [orderless]: https://github.com/oantolin/orderless
