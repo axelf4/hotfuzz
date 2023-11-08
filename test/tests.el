@@ -29,8 +29,7 @@
 
 (ert-deftest tighter-match-cost-test ()
   "Test that matches spanning fewer characters are better."
-  (should (< (hotfuzz--cost "ab" "xaxbxx")
-             (hotfuzz--cost "ab" "xaxxbx"))))
+  (should (< (hotfuzz--cost "ab" "xaxbxx") (hotfuzz--cost "ab" "xaxxbx"))))
 
 ;;; Highlighting tests
 
@@ -77,7 +76,12 @@
          (last (last candidates)))
     (when (numberp (cdr last)) (setcdr last nil))
     (when sortfun (setq candidates (funcall sortfun candidates)))
-    (should (equal candidates '("fb" "foo-baz" "foobar")))))
+    ;; Completions should be eagerly fontified by default
+    (should (equal-including-properties
+             candidates
+             '(#("fb" 0 2 (completion-sorted t face completions-common-part))
+               #("foo-baz" 0 1 (face completions-common-part) 4 5 (face completions-common-part))
+               #("foobar" 0 1 (face completions-common-part) 3 4 (face completions-common-part)))))))
 
 (ert-deftest boundaries-test ()
   "Test completion on a single field of a filename."
@@ -96,3 +100,13 @@
        nil
        6) ; Point as in "/usr/s|/man"
       '("share/" . 5)))))
+
+(defvar completion-lazy-hilit)
+(defvar completion-lazy-hilit-fn)
+(ert-deftest lazy-hilit-test ()
+  "Test lazy fontification."
+  (let ((completion-lazy-hilit t) completion-lazy-hilit-fn)
+    (should (equal-including-properties (hotfuzz-all-completions "x" '("x"))
+                                        '(#("x" 0 1 (completion-sorted t)))))
+    (should (equal-including-properties (funcall completion-lazy-hilit-fn "x")
+                                        #("x" 0 1 (face completions-common-part))))))
