@@ -84,10 +84,19 @@ there is a contiguous match later in the string.
 The [flx] package - which out-of-the-box only supports [Ido] -
 has scoring criteria similar to those used by hotfuzz,
 but works a little differently.
-Its bountiful use of caching
-means it can be faster at scoring long candidates.
+Its bountiful use of caching means it can be faster at scoring long candidates.
 Since the ordering of completions differs between flx and hotfuzz
 you are encouraged to try both.
+
+### fussy
+
+The [fussy] completion style is generic over different fuzzy scoring backends,
+flx and the Emacs Lisp implementation of hotfuzz being two of them.
+fussy also implements caching of filtered candidates.
+Although some of the scoring backends are implemented as dynamic modules,
+hotfuzz has the advantage of passing all completion candidates
+to its dynamic module en masse,
+allowing sorting and filtering to be parallelized.
 
 ### orderless
 
@@ -105,4 +114,5 @@ and so users who dislike that may prefer orderless.
 [Ido]: https://www.gnu.org/software/emacs/manual/html_node/ido/index.html
 [Fido]: https://www.gnu.org/software/emacs/manual/html_node/emacs/Icomplete.html
 [flx]: https://github.com/lewang/flx
+[fussy]: https://github.com/jojojames/fussy
 [orderless]: https://github.com/oantolin/orderless
