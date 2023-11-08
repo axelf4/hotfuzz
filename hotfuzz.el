@@ -45,32 +45,26 @@ Large values will decrease performance."
 (defvar hotfuzz--d (make-vector hotfuzz--max-needle-len 0))
 (defvar hotfuzz--bonus (make-vector hotfuzz--max-haystack-len 0))
 
-(defconst hotfuzz--bonus-prev-luts
+(defconst hotfuzz--bonus-lut
   (eval-when-compile
-    (let ((bonus-state-special (make-char-table 'hotfuzz-bonus-lut 0))
-          (bonus-state-upper (make-char-table 'hotfuzz-bonus-lut 0))
-          (bonus-state-lower (make-char-table 'hotfuzz-bonus-lut 0))
+    (let ((state-special (make-char-table 'hotfuzz-bonus-lut 0))
+          (state-upper (make-char-table 'hotfuzz-bonus-lut 0))
+          (state-lower (make-char-table 'hotfuzz-bonus-lut 0))
           (word-bonus 80))
-      (cl-loop for (ch . bonus) in `((?/ . 90) (?. . 60)
-                                     (?- . ,word-bonus) (?_ . ,word-bonus)
-                                     (?\  . ,word-bonus))
-               do (aset bonus-state-upper ch bonus) (aset bonus-state-lower ch bonus))
-      (cl-loop for ch from ?a to ?z do (aset bonus-state-upper ch word-bonus))
-      (vector bonus-state-special bonus-state-upper bonus-state-lower)))
-  "LUTs of the bonus associated with the previous character.")
-(defconst hotfuzz--bonus-cur-lut
-  (eval-when-compile
-    (let ((bonus-cur-lut (make-char-table 'hotfuzz-bonus-lut 0)))
-      (cl-loop for ch from ?A to ?Z do (aset bonus-cur-lut ch 1))
-      (cl-loop for ch from ?a to ?z do (aset bonus-cur-lut ch 2))
-      bonus-cur-lut))
-  "LUT of the `hotfuzz--bonus-prev-luts' index based on the current character.")
+      (set-char-table-range state-upper '(?a . ?z) word-bonus)
+      (cl-loop for (ch . bonus) in `((?/ . 90) (?. . 60) (?\  . ,word-bonus)
+                                     (?- . ,word-bonus) (?_ . ,word-bonus))
+               do (aset state-upper ch bonus) (aset state-lower ch bonus))
+      (let ((lut (make-char-table 'hotfuzz-bonus-lut state-special)))
+        (set-char-table-range lut '(?A . ?Z) state-upper)
+        (set-char-table-range lut '(?a . ?z) state-lower)
+        lut)))
+  "LUT of the bonus associated with the current/previous characters.")
 
 (defun hotfuzz--calc-bonus (haystack)
   "Precompute all potential bonuses for matching certain characters in HAYSTACK."
   (cl-loop for ch across haystack and i from 0 and lastch = ?/ then ch do
-           (let ((lut (aref hotfuzz--bonus-prev-luts (aref hotfuzz--bonus-cur-lut ch))))
-             (aset hotfuzz--bonus i (aref lut lastch)))))
+           (aset hotfuzz--bonus i (aref (aref hotfuzz--bonus-lut ch) lastch))))
 
 ;; Aᵢ denotes the prefix a₀,...,aᵢ₋₁ of A
 (defun hotfuzz--match-row (a b i nc nd pc pd)
