@@ -168,6 +168,7 @@ list before passing it to `display-sort-function' or
         (setcar all (propertize (car all) 'completion-sorted t)))
       (if (string= prefix "") all (nconc all (length prefix))))))
 
+;;;###autoload
 (defun hotfuzz--adjust-metadata (metadata)
   "Adjust completion METADATA for hotfuzz sorting."
   (let ((existing-dsf (completion-metadata-get metadata 'display-sort-function))
