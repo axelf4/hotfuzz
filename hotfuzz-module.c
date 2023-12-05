@@ -177,7 +177,8 @@ static void bump_free(struct Bump *head) {
 static struct EmacsStr *copy_emacs_string(emacs_env *env, struct Bump **bump, emacs_value value) {
 	ptrdiff_t len;
 	// Determine the size of the string (including null-terminator)
-	env->copy_string_contents(env, value, NULL, &len);
+	if (!env->copy_string_contents(env, value, NULL, &len))
+		return NULL;
 
 	struct EmacsStr *result;
 	// Note: Since only EmacsStr:s are allocated with bump_alloc we
