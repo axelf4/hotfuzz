@@ -55,8 +55,8 @@ and run
 ```sh
 mkdir build
 cd build
-cmake -DCMAKE_C_FLAGS='-O3 -march=native' .. \
-	&& cmake --build .
+cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_FLAGS=-march=native .. &&
+	cmake --build .
 ```
 
 and place the resulting shared library somewhere in `load-path`.

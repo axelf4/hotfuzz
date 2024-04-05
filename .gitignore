@@ -1,2 +1,5 @@
 /.eldev
 /Eldev-local
+
+/build
+/hotfuzz-module.so
