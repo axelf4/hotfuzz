@@ -20,26 +20,23 @@
 
 ;;; Code:
 
-;; See: Myers, Eugene W., and Webb Miller. "Optimal alignments in
-;;      linear space." Bioinformatics 4.1 (1988): 11-17.
+;; See: GOTOH, Osamu. An improved algorithm for matching biological
+;;      sequences. Journal of molecular biology, 1982, 162.3: 705-708.
 
 (eval-when-compile (require 'cl-lib))
 (require 'hotfuzz-module nil t)
 (declare-function hotfuzz--filter-c "hotfuzz-module")
 
-(defgroup hotfuzz nil
-  "Fuzzy completion style."
-  :group 'minibuffer)
+(defgroup hotfuzz nil "Fuzzy completion style." :group 'minibuffer)
 
 (defcustom hotfuzz-max-highlighted-completions 25
   "The number of top-ranking completions that should be highlighted.
 Large values will decrease performance."
   :type 'integer)
 
-;; Since the vectors are pre-allocated the optimization where
-;; symmetricity w.r.t. to insertions/deletions means it suffices to
-;; allocate min(#needle, #haystack) for C/D when only calculating the
-;; cost does not apply.
+;; Pre-allocated vectors make the cost-only calulation optimization
+;; where symmetricity w.r.t. insertions/deletions means it suffices to
+;; allocate min(#needle, #haystack) for C/D inapplicable.
 (defconst hotfuzz--max-needle-len 128)
 (defconst hotfuzz--max-haystack-len 512)
 (defvar hotfuzz--c (make-vector hotfuzz--max-needle-len 0))
@@ -101,14 +98,12 @@ and ND/PD respectively may alias."
         (aref c (1- m)))))) ; Final cost
 
 (defun hotfuzz-highlight (needle haystack)
-  "Highlight the characters that NEEDLE matched in HAYSTACK.
+  "Highlight destructively the characters NEEDLE matched in HAYSTACK.
 HAYSTACK has to be a match according to `hotfuzz-all-completions'."
   (let ((n (length haystack)) (m (length needle))
-        (c hotfuzz--c) (d hotfuzz--d)
+        (c (fillarray hotfuzz--c 10000)) (d (fillarray hotfuzz--d 10000))
         (case-fold-search completion-ignore-case))
     (unless (or (> n hotfuzz--max-haystack-len) (> m hotfuzz--max-needle-len))
-      (fillarray c 10000)
-      (fillarray d 10000)
       (hotfuzz--calc-bonus haystack)
       (cl-loop
        with rows initially
@@ -129,12 +124,11 @@ HAYSTACK has to be a match according to `hotfuzz-all-completions'."
 (defun hotfuzz-all-completions (string table &optional pred point)
   "Get hotfuzz-completions of STRING in TABLE.
 See `completion-all-completions' for the semantics of PRED and POINT.
-This function prematurely sorts the completions; mutating the returned
-list before passing it to `display-sort-function' or
-`cycle-sort-function' will lead to inaccuracies."
-  (unless point (setq point (length string)))
+This function prematurely sorts the completions; mutating the result
+before passing it to `display-sort-function' or `cycle-sort-function'
+will lead to inaccuracies."
   (let* ((beforepoint (substring string 0 point))
-         (afterpoint (substring string point))
+         (afterpoint (if point (substring string point) ""))
          (bounds (completion-boundaries beforepoint table pred afterpoint))
          (prefix (substring beforepoint 0 (car bounds)))
          (needle (substring beforepoint (car bounds)))
@@ -187,11 +181,11 @@ list before passing it to `display-sort-function' or
 
 ;;;###autoload
 (progn
-  ;; Why is the Emacs completions API so cursed?
-  (put 'hotfuzz 'completion--adjust-metadata #'hotfuzz--adjust-metadata)
   (add-to-list 'completion-styles-alist
                '(hotfuzz completion-flex-try-completion hotfuzz-all-completions
-                         "Fuzzy completion.")))
+                         "Fuzzy completion."))
+  ;; Why is the Emacs completions API so cursed?
+  (put 'hotfuzz 'completion--adjust-metadata #'hotfuzz--adjust-metadata))
 
 (provide 'hotfuzz)
 ;;; hotfuzz.el ends here
