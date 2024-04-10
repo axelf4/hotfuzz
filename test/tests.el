@@ -1,4 +1,4 @@
-;;; tests.el --- The hotfuzz test suite  -*- lexical-binding: t; -*-
+;;; tests.el --- The hotfuzz test suite  -*- lexical-binding: t -*-
 
 (require 'ert)
 (require 'hotfuzz)
@@ -72,16 +72,29 @@
          (table '("foobar" "fxxx" "foo-baz" "" "fb"))
          (meta (completion-metadata s table nil))
          (candidates (completion-all-completions s table nil (length s) meta))
-         (sortfun (alist-get 'display-sort-function meta))
+         (sort-fn (alist-get 'display-sort-function meta))
          (last (last candidates)))
     (when (numberp (cdr last)) (setcdr last nil))
-    (when sortfun (setq candidates (funcall sortfun candidates)))
+    (when sort-fn (setq candidates (funcall sort-fn candidates)))
     ;; Completions should be eagerly fontified by default
     (should (equal-including-properties
              candidates
              '(#("fb" 0 2 (completion-sorted t face completions-common-part))
                #("foo-baz" 0 1 (face completions-common-part) 4 5 (face completions-common-part))
                #("foobar" 0 1 (face completions-common-part) 3 4 (face completions-common-part)))))))
+
+(ert-deftest display-sort-function-test ()
+  "Test that empty strings apply the completion function `display-sort-function'."
+  (cl-flet ((sorted-completions (string)
+              (let* ((completion-styles '(hotfuzz))
+                     (table '("xbbx" "xx" "xax"))
+                     (md `(metadata (display-sort-function
+                                     . ,(lambda (xs) (sort xs #'string<)))))
+                     (all (completion-all-completions
+                           string table nil (length string) md)))
+                (funcall (alist-get 'display-sort-function md) all))))
+    (should (equal (sorted-completions "") '("xax" "xbbx" "xx"))) ; Lexicographically sorted
+    (should (equal (sorted-completions "xx") '("xx" "xax" "xbbx")))))
 
 (ert-deftest boundaries-test ()
   "Test completion on a single field of a filename."
@@ -90,13 +103,12 @@
      (equal
       (completion-all-completions
        "/usr/s/man"
-       (lambda (string _pred action)
+       (lambda (string pred action)
          (let ((dir (file-name-directory string)))
            (pcase action
-             ('metadata '(metadata (category . file)))
              (`(boundaries . ,suffix)
               `(boundaries ,(length dir) . ,(string-match-p "/" suffix)))
-             ('t (all-completions "" '("bin/" "share/" "local/"))))))
+             ('t (all-completions "" '("bin/" "share/" "local/") pred)))))
        nil
        6) ; Point as in "/usr/s|/man"
       '("share/" . 5)))))
