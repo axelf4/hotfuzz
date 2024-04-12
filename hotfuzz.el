@@ -24,6 +24,7 @@
 ;;      linear space." Bioinformatics 4.1 (1988): 11-17.
 
 (eval-when-compile (require 'cl-lib))
+(require 'hotfuzz-module nil t)
 (declare-function hotfuzz--filter-c "hotfuzz-module")
 
 (defgroup hotfuzz nil
@@ -137,7 +138,7 @@ list before passing it to `display-sort-function' or
          (bounds (completion-boundaries beforepoint table pred afterpoint))
          (prefix (substring beforepoint 0 (car bounds)))
          (needle (substring beforepoint (car bounds)))
-         (use-module-p (require 'hotfuzz-module nil t))
+         (use-module-p (fboundp 'hotfuzz--filter-c))
          (case-fold-search completion-ignore-case)
          (completion-regexp-list
           (if use-module-p completion-regexp-list
@@ -191,9 +192,6 @@ list before passing it to `display-sort-function' or
   (add-to-list 'completion-styles-alist
                '(hotfuzz completion-flex-try-completion hotfuzz-all-completions
                          "Fuzzy completion.")))
-
-;;;###autoload
-(define-obsolete-function-alias 'hotfuzz-vertico-mode #'ignore "0.1")
 
 (provide 'hotfuzz)
 ;;; hotfuzz.el ends here
