@@ -53,10 +53,8 @@ To compile, make sure GCC, CMake and GNU Make or similar are present,
 and run
 
 ```sh
-mkdir build
-cd build
-cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_FLAGS=-march=native .. &&
-	cmake --build .
+cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_FLAGS=-march=native . &&
+	cmake --build build
 ```
 
 and place the resulting shared library somewhere in `load-path`.
