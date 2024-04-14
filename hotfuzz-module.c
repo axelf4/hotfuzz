@@ -3,6 +3,7 @@
  *
  * See the Lisp source for an explanation of the algorithm.
  */
+#define _POSIX_C_SOURCE 200809L
 #include <stdlib.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -62,7 +63,7 @@ static void match_row(struct Str a, struct Str b, int *bonuses, unsigned i, int 
 	for (size_t j = 0; j < m; ++j, s = oldc) {
 		oldc = c[j];
 		d[j] = MIN(d[j], oldc + g) + (j == m - 1 ? h : 2 * h);
-		c[j] = MIN(d[j], a.b[i] == b.b[j] ? s - bonuses[i] : 100000);
+		c[j] = a.b[i] == b.b[j] ? MIN(d[j], s - bonuses[i]) : d[j];
 	}
 }
 
@@ -93,9 +94,9 @@ static int calc_cost(struct Str needle, struct Str haystack, bool ignore_case) {
  */
 static bool is_match(char *needle, char *haystack, bool ignore_case) {
 	while (*needle)
-		if (ignore_case
-			? (haystack = strpbrk(haystack, (char[]) { *needle, toupper_utf8(*needle), '\0' }))
-			: (haystack = strchr(haystack, *needle)))
+		if (haystack = ignore_case
+			? strpbrk(haystack, (char[]) { *needle, toupper_utf8(*needle), '\0' })
+			: strchr(haystack, *needle))
 			++needle, ++haystack; // Skip past matched character
 		else
 			return false;

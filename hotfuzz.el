@@ -34,7 +34,7 @@
 Large values will decrease performance."
   :type 'integer)
 
-;; Pre-allocated vectors make the cost-only calulation optimization
+;; Pre-allocated vectors make the cost-only calculation optimization
 ;; where symmetricity w.r.t. insertions/deletions means it suffices to
 ;; allocate min(#needle, #haystack) for C/D inapplicable.
 (defconst hotfuzz--max-needle-len 128)
@@ -101,13 +101,13 @@ and ND/PD respectively may alias."
   "Highlight destructively the characters NEEDLE matched in HAYSTACK.
 HAYSTACK has to be a match according to `hotfuzz-all-completions'."
   (let ((n (length haystack)) (m (length needle))
-        (c (fillarray hotfuzz--c 10000)) (d (fillarray hotfuzz--d 10000))
         (case-fold-search completion-ignore-case))
     (unless (or (> n hotfuzz--max-haystack-len) (> m hotfuzz--max-needle-len))
       (hotfuzz--calc-bonus haystack)
       (cl-loop
        with rows initially
-       (cl-loop for i below n and pc = c then nc and pd = d then nd
+       (cl-loop for i below n and pc = (fillarray hotfuzz--c 10000) then nc
+                and pd = (fillarray hotfuzz--d 10000) then nd
                 and nc = (make-vector m 0) and nd = (make-vector m 0) do
                 (hotfuzz--match-row haystack needle i nc nd pc pd)
                 (push (cons nc nd) rows))
