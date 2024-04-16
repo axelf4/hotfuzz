@@ -94,9 +94,9 @@ static int calc_cost(struct Str needle, struct Str haystack, bool ignore_case) {
  */
 static bool is_match(char *needle, char *haystack, bool ignore_case) {
 	while (*needle)
-		if (haystack = ignore_case
-			? strpbrk(haystack, (char[]) { *needle, toupper_utf8(*needle), '\0' })
-			: strchr(haystack, *needle))
+		if ((haystack = ignore_case
+				? strpbrk(haystack, (char[]) { *needle, toupper_utf8(*needle), '\0' })
+				: strchr(haystack, *needle)))
 			++needle, ++haystack; // Skip past matched character
 		else
 			return false;
@@ -281,7 +281,8 @@ int emacs_module_init(struct emacs_runtime *rt) {
 
 	long max_workers = sysconf(_SC_NPROCESSORS_ONLN);
 	struct Data *data;
-	if (!(data = malloc(max_workers * sizeof *data->threads))) return 1;
+	if (!(data = malloc(sizeof *data + max_workers * sizeof *data->threads)))
+		return 1;
 	*data = (struct Data) { max_workers };
 
 	env->funcall(env, env->intern(env, "defalias"), 2, (emacs_value[]) {
