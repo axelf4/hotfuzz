@@ -13,44 +13,35 @@ To use hotfuzz, add it to the `completion-styles` list:
 ```elisp
 (setq completion-styles '(hotfuzz))
 ```
-Or, if using [Fido], add hotfuzz to the `completion-styles` list this way:
+If using [Fido], its insistence on using `flex` needs to be thwarted:
 ```elisp
 (add-hook 'icomplete-minibuffer-setup-hook
-          (lambda () (setq-local completion-styles '(hotfuzz))))
+          (lambda () (kill-local-variable 'completion-styles)))
 ```
-
-**Note:** Unless the completion UI supports the
-`completion-lazy-hilit` variable, as i.a. [Vertico] and [Corfu] do,
-then highlighting of the matched characters will only be applied to
-the first `hotfuzz-max-highlighted-completions` completions, out of
-performance concerns. The default value is large enough that generally
-the list of completions will need to be scrolled beyond the second
-page to reach non-highlighted completions. If you are annoyed by this
-you can make it highlight all completions instead using
-```elisp
-(setq hotfuzz-max-highlighted-completions most-positive-fixnum)
-```
-provided you are completing small enough lists and/or do not encounter
-performance problems.
 
 ## Customization
 
-Hotfuzz adheres to a few of the default Emacs completion configuration options:
-* `completion-ignore-case` specifies whether case should be considered
-  significant when matching.
-* The face `completions-common-part` is used for highlighting the
-  characters of a candidate that the search string matched.
+The following ordinary Emacs completion options are adhered to:
+* `completion-ignore-case` specifies whether matching is case-insignificant.
+* The `completions-common-part` face is used to highlight
+  what characters of a candidate the search string matched.
+
+Unless the completion UI supports `completion-lazy-hilit`, as i.a.
+[Vertico] and [Corfu] do, only the first
+`hotfuzz-max-highlighted-completions` completions will be
+highlighted out of performance concerns. The default value is large
+enough that generally the list of completions will need to be
+scrolled beyond the second page to reach non-highlighted
+completions, but this optimization may be disabled with:
+```elisp
+(setq hotfuzz-max-highlighted-completions most-positive-fixnum)
+```
 
 ## Dynamic module
 
 Optionally, you may compile the bundled dynamic module
-to greatly improve the performance of filtering.
-Once the shared object is available in `load-path`
-it will automatically be picked up when hotfuzz is loaded,
-or you may evaluate `(require 'hotfuzz-module)`
-if hotfuzz already has been loaded.
-To compile, make sure GCC, CMake and GNU Make or similar are present,
-and run
+for improved performance.
+Ensure GCC, CMake and GNU Make or similar are present, and run
 
 ```sh
 cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_FLAGS=-march=native . &&
@@ -58,9 +49,25 @@ cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_FLAGS=-march=native . &&
 ```
 
 and place the resulting shared library somewhere in `load-path`.
+It will be automatically picked up,
+or you may evaluate `(require 'hotfuzz-module)`
+if hotfuzz has already been loaded.
 
 Unlike the Lisp implementation,
 the dynamic module uses an unstable sorting algorithm.
+
+> [!NOTE]
+> Dynamic modules are unable to access invalid Unicode strings.
+>
+> [Consult] appends invisible so-called *tofus* to disambiguate
+> completions and encode line numbers. Problematically, characters
+> outside the Unicode range, unlikely to be matched by a search
+> string, are used. Using e.g. the Supplementary Private Use Area-B
+> instead circumvents the encoding issues:
+> ```elisp
+> (setq consult--tofu-char #x100000
+>       consult--tofu-range #x00fffe)
+> ```
 
 ## Related projects
 
@@ -74,8 +81,7 @@ the matched characters in a candidate could look like
 
 > x**f**xxx**o**xxx**o**xfoox
 
-which would score low even though
-there is a contiguous match later in the string.
+which would score low despite the later contiguous match.
 
 ### flx
 
@@ -111,6 +117,7 @@ and so users who dislike that may prefer orderless.
 [Corfu]: https://github.com/minad/corfu
 [Ido]: https://www.gnu.org/software/emacs/manual/html_node/ido/index.html
 [Fido]: https://www.gnu.org/software/emacs/manual/html_node/emacs/Icomplete.html
+[Consult]: https://github.com/minad/consult
 [flx]: https://github.com/lewang/flx
 [fussy]: https://github.com/jojojames/fussy
 [orderless]: https://github.com/oantolin/orderless
