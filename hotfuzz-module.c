@@ -3,7 +3,6 @@
  *
  * See the Lisp source for an explanation of the algorithm.
  */
-#define _POSIX_C_SOURCE 200809L
 #include <stdlib.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -29,12 +28,12 @@ static char toupper_utf8(char c) {
 static void strtolower(struct Str s) {
 	uint64_t ones = ~UINT64_C(0) / 0xff, x;
 	for (size_t i = 0; i < s.len; i += sizeof x) {
-		memcpy(&x, s.b, sizeof x);
+		memcpy(&x, s.b + i, sizeof x);
 		uint64_t is_gt_Z = (0x7f * ones & x) + (0x7f - *u8"Z") * ones,
 			is_ge_A = (0x7f * ones & x) + (0x80 - *u8"A") * ones,
 			is_upper = 0x80 * ones & ~x & (is_ge_A ^ is_gt_Z);
 		x |= is_upper >> 2;
-		memcpy(s.b, &x, sizeof x);
+		memcpy(s.b + i, &x, sizeof x);
 	}
 }
 
@@ -75,7 +74,7 @@ static int calc_cost(struct Str needle, struct Str haystack, bool ignore_case) {
 
 	int bonuses[MAX_HAYSTACK_LEN];
 	char ch, lastch = '/';
-	for (size_t i = 0; i < n; ++i, lastch = ch)
+	for (unsigned i = 0; i < n; ++i, lastch = ch)
 		bonuses[i] = char_bonus(lastch, ch = haystack.b[i]);
 
 	if (ignore_case) strtolower(haystack);

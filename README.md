@@ -44,7 +44,7 @@ for improved performance.
 Ensure GCC, CMake and GNU Make or similar are present, and run
 
 ```sh
-cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_FLAGS=-march=native . &&
+cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_FLAGS=-march=native &&
 	cmake --build build
 ```
 
@@ -59,11 +59,10 @@ the dynamic module uses an unstable sorting algorithm.
 > [!NOTE]
 > Dynamic modules are unable to access invalid Unicode strings.
 >
-> [Consult] appends invisible so-called *tofus* to disambiguate
-> completions and encode line numbers. Problematically, characters
-> outside the Unicode range, unlikely to be matched by a search
-> string, are used. Using e.g. the Supplementary Private Use Area-B
-> instead circumvents the encoding issues:
+> [Consult] appends invisible *tofus*, characters outside the Unicode
+> range (unlikely to match search strings), to attach line numbers and
+> disambiguate completions. Using e.g. the Supplementary Private Use
+> Area-B instead circumvents encoding issues:
 > ```elisp
 > (setq consult--tofu-char #x100000
 >       consult--tofu-range #x00fffe)
