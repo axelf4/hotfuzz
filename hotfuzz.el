@@ -1,6 +1,6 @@
 ;;; hotfuzz.el --- Fuzzy completion style  -*- lexical-binding: t -*-
 
-;; Copyright (C) 2021 Axel Forsman
+;; Copyright (C) Axel Forsman
 
 ;; Author: Axel Forsman <axel@axelf.se>
 ;; Version: 0.1
@@ -27,7 +27,7 @@
 (require 'hotfuzz-module nil t)
 (declare-function hotfuzz--filter-c "hotfuzz-module")
 
-(defgroup hotfuzz nil "Fuzzy completion style." :group 'minibuffer)
+(defgroup hotfuzz () "Fuzzy completion style." :group 'minibuffer)
 
 (defcustom hotfuzz-max-highlighted-completions 25
   "The number of top-ranking completions that should be highlighted.
@@ -145,8 +145,7 @@ will lead to inaccuracies."
               (cons (concat "\\`" re) completion-regexp-list))))
          (all (if (and (string= prefix "") (or (stringp (car-safe table)) (null table))
                        (not (or pred completion-regexp-list (string= needle ""))))
-                  table
-                (all-completions prefix table pred))))
+                  table (all-completions prefix table pred))))
     ;; `completion-pcm--all-completions' tests completion-regexp-list
     ;; again with functional tables even though they should handle it.
     (cond
@@ -176,7 +175,7 @@ will lead to inaccuracies."
   (add-to-list 'completion-styles-alist
                '(hotfuzz completion-flex-try-completion hotfuzz-all-completions
                          "Fuzzy completion."))
-  ;; Why is the Emacs completions API so cursed?
+  ;; Why is the Emacs completion API so cursed?
   (put 'hotfuzz 'completion--adjust-metadata #'hotfuzz--adjust-metadata))
 
 (provide 'hotfuzz)
