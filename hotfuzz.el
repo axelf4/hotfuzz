@@ -43,6 +43,8 @@ Large values will decrease performance."
 (defvar hotfuzz--d (make-vector hotfuzz--max-needle-len 0))
 (defvar hotfuzz--bonus (make-vector hotfuzz--max-haystack-len 0))
 
+(defvar hotfuzz--filtering-p)
+
 (defconst hotfuzz--bonus-lut
   (eval-when-compile
     (let ((state-special (make-char-table 'hotfuzz-bonus-lut 0))
@@ -153,31 +155,21 @@ will lead to inaccuracies."
      ((> (length needle) hotfuzz--max-needle-len))
      (t (cl-loop for x in-ref all do (setf x (cons (hotfuzz--cost needle x) x))
                  finally (setq all (mapcar #'cdr (sort all #'car-less-than-car))))))
-    (when all
-      (unless (string= needle "")
-        (defvar completion-lazy-hilit-fn) ; Introduced in Emacs 30 (bug#47711)
-        (if (bound-and-true-p completion-lazy-hilit)
-            (setq completion-lazy-hilit-fn (apply-partially #'hotfuzz-highlight needle))
-          (cl-loop repeat hotfuzz-max-highlighted-completions and for x in-ref all
-                   do (setf x (hotfuzz-highlight needle (copy-sequence x)))))
-        (setcar all (propertize (car all) 'completion-sorted t)))
-      (if (string= prefix "") all (nconc all (length prefix))))))
+    (setq hotfuzz--filtering-p (not (string= needle "")))
+    (defvar completion-lazy-hilit-fn) ; Introduced in Emacs 30 (bug#47711)
+    (if (bound-and-true-p completion-lazy-hilit)
+        (setq completion-lazy-hilit-fn (apply-partially #'hotfuzz-highlight needle))
+      (cl-loop repeat hotfuzz-max-highlighted-completions and for x in-ref all
+               do (setf x (hotfuzz-highlight needle (copy-sequence x)))))
+    (and all (if (string= prefix "") all (nconc all (length prefix))))))
 
 ;;;###autoload
 (defun hotfuzz--adjust-metadata (metadata)
   "Adjust completion METADATA for hotfuzz sorting."
-  (let ((existing-dsf (completion-metadata-get metadata 'display-sort-function))
-        (existing-csf (completion-metadata-get metadata 'cycle-sort-function)))
-    (cl-flet ((compose-sort-fn (existing-sort-fn)
-                (lambda (completions)
-                  (if (or (null completions)
-                          (get-text-property 0 'completion-sorted (car completions)))
-                      completions
-                    (funcall existing-sort-fn completions)))))
-      `(metadata
-        (display-sort-function . ,(compose-sort-fn (or existing-dsf #'identity)))
-        (cycle-sort-function . ,(compose-sort-fn (or existing-csf #'identity)))
-        . ,(cdr metadata)))))
+  (if hotfuzz--filtering-p
+      `(metadata (display-sort-function . identity) (cycle-sort-function . identity)
+                 . ,(cdr metadata))
+    metadata))
 
 ;;;###autoload
 (progn

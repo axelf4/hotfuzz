@@ -79,7 +79,7 @@
     ;; Completions should be eagerly fontified by default
     (should (equal-including-properties
              candidates
-             '(#("fb" 0 2 (completion-sorted t face completions-common-part))
+             '(#("fb" 0 2 (face completions-common-part))
                #("foo-baz" 0 1 (face completions-common-part) 4 5 (face completions-common-part))
                #("foobar" 0 1 (face completions-common-part) 3 4 (face completions-common-part)))))))
 
@@ -118,7 +118,6 @@
 (ert-deftest lazy-hilit-test ()
   "Test lazy fontification."
   (let ((completion-lazy-hilit t) completion-lazy-hilit-fn)
-    (should (equal-including-properties (hotfuzz-all-completions "x" '("x"))
-                                        '(#("x" 0 1 (completion-sorted t)))))
+    (should (equal-including-properties (hotfuzz-all-completions "x" '("x")) '("x")))
     (should (equal-including-properties (funcall completion-lazy-hilit-fn "x")
                                         #("x" 0 1 (face completions-common-part))))))
