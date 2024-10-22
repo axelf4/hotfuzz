@@ -43,7 +43,7 @@ Large values will decrease performance."
 (defvar hotfuzz--d (make-vector hotfuzz--max-needle-len 0))
 (defvar hotfuzz--bonus (make-vector hotfuzz--max-haystack-len 0))
 
-(defvar hotfuzz--filtering-p)
+(defvar hotfuzz--filtering-p nil)
 
 (defconst hotfuzz--bonus-lut
   (eval-when-compile
@@ -143,7 +143,7 @@ will lead to inaccuracies."
                                       (concat "[^" s "]*" (regexp-quote s))))
                        needle "")))
               (cons (concat "\\`" re) completion-regexp-list))))
-         (all (if (and (string= prefix "") (or (stringp (car-safe table)) (null table))
+         (all (if (and (string= prefix "") (stringp (car-safe table))
                        (not (or pred completion-regexp-list (string= needle ""))))
                   table (all-completions prefix table pred))))
     ;; `completion-pcm--all-completions' tests completion-regexp-list
