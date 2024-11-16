@@ -56,12 +56,12 @@ static int char_bonus(char prev, char ch) {
 }
 
 static void match_row(struct Str a, struct Str b, int *bonuses, unsigned i, int *c, int *d) {
-	int g = 100, h = 5;
+	int g = 100, h = 10;
 	size_t m = b.len;
-	int oldc, s = i ? g + h * i : 0;
+	int oldc, s = i ? g + 5 * i : 0;
 	for (size_t j = 0; j < m; ++j, s = oldc) {
 		oldc = c[j];
-		d[j] = MIN(d[j], oldc + g) + (j == m - 1 ? h : 2 * h);
+		d[j] = MIN(d[j], oldc + (j < m - 1 ? g : 0)) + h;
 		c[j] = a.b[i] == b.b[j] ? MIN(d[j], s - bonuses[i]) : d[j];
 	}
 }

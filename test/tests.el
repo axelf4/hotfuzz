@@ -29,7 +29,7 @@
 
 (ert-deftest hotfuzz-tighter-match-cost-test ()
   "Test that matches spanning fewer characters are better."
-  (should (< (hotfuzz--cost "ab" "xaxbxx") (hotfuzz--cost "ab" "xaxxbx"))))
+  (should (< (hotfuzz--cost "ab" "xxaxbx") (hotfuzz--cost "ab" "xaxxbx"))))
 
 ;;; Highlighting tests
 

@@ -75,16 +75,16 @@ into NC/ND, using the costs for row I-1 in PC/PD. The vectors NC/PC
 and ND/PD respectively may alias."
   (cl-loop
    with m = (length b)
-   and g = 100 and h = 5 ; Every k-symbol gap is penalized by g+hk
+   and g = 100 and h = 10 ; Every k-symbol gap is penalized by g+hk
    ;; s threads the old value C[i-1][j-1] throughout the loop
-   for j below m and s = (if (zerop i) 0 (+ g (* h i))) then oldc
+   for j below m and s = (if (zerop i) 0 (+ g (* 5 i))) then oldc
    for oldc = (aref pc j) do
    ;; Either extend optimal conversion of (i) Aᵢ₋₁ to Bⱼ₋₁, by
    ;; matching bⱼ (C[i-1,j-1]-bonus); or (ii) Aᵢ₋₁ to Bⱼ, by deleting
    ;; aᵢ and opening a new gap (C[i-1,j]+g+h) or enlarging the
    ;; previous gap (D[i-1,j]+h).
-   (aset nc j (min (aset nd j (+ (min (aref pd j) (+ oldc g))
-                                 (if (= j (1- m)) h (* 2 h))))
+   (aset nc j (min (aset nd j (+ h (min (+ oldc (if (< j (1- m)) g 0))
+                                        (aref pd j))))
                    (if (char-equal (aref a i) (aref b j))
                        (- s (aref hotfuzz--bonus i))
                      most-positive-fixnum)))))
