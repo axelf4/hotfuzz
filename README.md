@@ -42,26 +42,23 @@ completions, but this optimization may be disabled with:
 Optionally, you may compile the bundled dynamic module
 for improved performance.
 Ensure GCC, CMake and GNU Make or similar are present, and run
-
 ```sh
 cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_FLAGS=-march=native &&
 	cmake --build build
 ```
-
 and place the resulting shared library somewhere in `load-path`.
-It will be automatically picked up,
-or you may evaluate `(require 'hotfuzz-module)`
-if hotfuzz has already been loaded.
-
-Unlike the Lisp implementation,
-the dynamic module uses an unstable sorting algorithm.
+Add `-DEMACS_ROOT=/path/to/emacs-root`
+(the directory containing `bin/`, `include/`, etc.)
+if it is not found automatically by locating `emacs` in `PATH`.
+The module will be picked up when hotfuzz is loaded;
+use `(featurep 'hotfuzz-module)` to check for its presence.
 
 > [!NOTE]
 > Dynamic modules are unable to access invalid Unicode strings.
 >
 > [Consult] appends invisible *tofus*, characters outside the Unicode
 > range (unlikely to match search strings), to attach line numbers and
-> disambiguate completions. Using e.g. the Supplementary Private Use
+> disambiguate completions. Using, e.g., the Supplementary Private Use
 > Area-B instead circumvents encoding issues:
 > ```elisp
 > (setq consult--tofu-char #x100000
