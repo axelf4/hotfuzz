@@ -3,6 +3,7 @@
 [![test](https://github.com/axelf4/hotfuzz/actions/workflows/test.yml/badge.svg)](https://github.com/axelf4/hotfuzz/actions/workflows/test.yml)
 [![codecov](https://codecov.io/gh/axelf4/hotfuzz/graph/badge.svg?token=OV1BqTB7QL)](https://codecov.io/gh/axelf4/hotfuzz)
 [![MELPA](https://melpa.org/packages/hotfuzz-badge.svg)](https://melpa.org/#/hotfuzz)
+[![MELPA Stable](https://stable.melpa.org/packages/hotfuzz-badge.svg)](https://stable.melpa.org/#/hotfuzz)
 
 This is a fuzzy Emacs completion style similar to the built-in `flex` style,
 but with a better scoring algorithm.
