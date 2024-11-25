@@ -3,10 +3,10 @@
 ;; Copyright (C) Axel Forsman
 
 ;; Author: Axel Forsman <axel@axelf.se>
-;; Version: 0.1
+;; Version: 1.0
 ;; Package-Requires: ((emacs "27.1"))
 ;; Keywords: matching
-;; Homepage: https://github.com/axelf4/hotfuzz
+;; URL: https://github.com/axelf4/hotfuzz
 ;; SPDX-License-Identifier: GPL-3.0-or-later
 
 ;;; Commentary:
@@ -71,8 +71,8 @@ Large values will decrease performance."
   "Calculate costs for transforming Aᵢ to Bⱼ with deletions for all j.
 The matrix C[i][j] represents the minimum cost of a conversion, and D,
 the minimum cost when aᵢ is deleted. The costs for row I are written
-into NC/ND, using the costs for row I-1 in PC/PD. The vectors NC/PC
-and ND/PD respectively may alias."
+into NC/ND, using the row I-1 in PC/PD. The vectors NC/PC and ND/PD
+respectively may alias."
   (cl-loop
    with m = (length b)
    and g = 100 and h = 10 ; Every k-symbol gap is penalized by g+hk
@@ -97,7 +97,7 @@ and ND/PD respectively may alias."
       (hotfuzz--calc-bonus haystack)
       (let ((c (fillarray hotfuzz--c 10000)) (d (fillarray hotfuzz--d 10000)))
         (dotimes (i n) (hotfuzz--match-row haystack needle i c d c d))
-        (aref c (1- m)))))) ; Final cost
+        (aref c (1- m))))))
 
 (defun hotfuzz-highlight (needle haystack)
   "Highlight destructively the characters NEEDLE matched in HAYSTACK.
