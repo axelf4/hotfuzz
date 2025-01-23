@@ -10,7 +10,20 @@
 #include <string.h>
 #include <emacs-module.h>
 #include <pthread.h>
+
+#ifdef _WIN32
+#include <sysinfoapi.h>
+long get_max_workers() {
+	SYSTEM_INFO sysinfo;
+	GetSystemInfo(&sysinfo);
+	return sysinfo.dwNumberOfProcessors;
+}
+#else
 #include <unistd.h>
+long get_max_workers() {
+	return sysconf(_SC_NPROCESSORS_ONLN);
+}
+#endif
 
 #define MIN(X, Y) ((X) < (Y) ? (X) : (Y))
 
@@ -278,7 +291,7 @@ int emacs_module_init(struct emacs_runtime *rt) {
 	emacs_env *env = rt->get_environment(rt);
 	if ((size_t) env->size < sizeof *env) return 2;
 
-	long max_workers = sysconf(_SC_NPROCESSORS_ONLN);
+	long max_workers = get_max_workers();
 	struct Data *data;
 	if (!(data = malloc(sizeof *data + max_workers * sizeof *data->threads)))
 		return 1;
